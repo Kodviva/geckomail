@@ -1,6 +1,6 @@
 # GeckoMail mobil uygulaması gizlilik politikası
 
-Yürürlük: yayın tarihinde sahibi doldurur. Yayıncı: Kodviva. İletişim adresi ve yayımlanacağı adres sahibi tarafından eklenir (`plans/2026-11-04-sahibi-isleri.md`, madde 15).
+Yürürlük: 5 Kasım 2026. Yayıncı: Kodviva Yazılım Sanayi ve Ticaret Limited Şirketi. İletişim: iletisim@kodviva.com. Yayın adresi: https://kodviva.com/geckomail/gizlilik
 
 ## Kısaca
 
