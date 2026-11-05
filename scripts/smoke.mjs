@@ -20,7 +20,9 @@ const electronBin = createRequire(import.meta.url)('electron')
 const READY_LINE = 'sync: hazır'
 const KEYLESS_LINE = 'smoke: Keychain kapalı'
 const SMIME_LINE = 'sync: smime hazır' // paketli çalışma zamanı (BoringSSL) S/MIME şifrelerini sunuyor
-const TIMEOUT_MS = 25_000
+const TIMEOUT_MS = process.platform === 'win32' ? 60_000 : 25_000
+// Windows'ta elektron penceresiz çıktı boruya düşmez: uygulama açıldı ve göçler bitti mi veritabanından okunur
+const NO_STDOUT = process.platform === 'win32'
 
 function runSmoke(seed) {
   return new Promise((resolve) => {
@@ -47,7 +49,7 @@ function runSmoke(seed) {
     }
 
     function cleanup(ok, reason) {
-      if (ok && seed && !out.includes(KEYLESS_LINE)) {
+      if (ok && seed && !NO_STDOUT && !out.includes(KEYLESS_LINE)) {
         ok = false
         reason = 'smoke-keyless.cjs yüklenmedi'
       }
@@ -61,7 +63,7 @@ function runSmoke(seed) {
         }
       }
       if (ok) {
-        console.log(`smoke: OK — uygulama başladı ve senkron hazır oldu (${SMIME_LINE})${seed ? ` (${seed})` : ''}`)
+        console.log(`smoke: OK — uygulama başladı${NO_STDOUT ? ', veritabanı güncel (S/MIME satırı Windows\'ta okunamaz)' : ` ve senkron hazır oldu (${SMIME_LINE})`}${seed ? ` (${seed})` : ''}`)
       } else {
         console.error(`smoke: FAIL — ${reason}\n--- son çıktı ---\n${out.slice(-2000)}`)
       }
@@ -78,6 +80,22 @@ function runSmoke(seed) {
     function onData(buf) {
       out += buf.toString()
       if (out.includes(READY_LINE) && out.includes(SMIME_LINE)) finish(true)
+    }
+    if (NO_STDOUT) {
+      const poll = setInterval(() => {
+        if (done) return clearInterval(poll)
+        try {
+          const db = new Database(dbPath, { readonly: true })
+          const version = db.pragma('user_version', { simple: true })
+          db.close()
+          if (version === migrationCount()) {
+            clearInterval(poll)
+            finish(true)
+          }
+        } catch {
+          /* dosya henüz yok ya da kilitli */
+        }
+      }, 2000)
     }
     child.stdout.on('data', onData)
     child.stderr.on('data', onData)

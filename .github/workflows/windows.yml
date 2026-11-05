@@ -42,7 +42,12 @@ jobs:
       - run: npm ci
       - run: npm run build
       # better-sqlite3 N-API ön derlemesi pakette; arm64 için çapraz derleme gerekmez ve yapılamaz
-      - run: npx electron-builder --win nsis appx --x64 --arm64 --publish never -c.npmRebuild=false
+      # electron-builder arm64 AppX için arm64 makeappx seçer, x64 makinede çalışmaz: makinedeki x64 Windows SDK araçları verilir
+      - run: |
+          kit=$(ls -d "/c/Program Files (x86)/Windows Kits/10/bin/10."*/x64 | sort -V | tail -1)
+          export ELECTRON_BUILDER_WINDOWS_KITS_PATH="$(cygpath -w "$kit")"
+          npx electron-builder --win nsis appx --x64 --arm64 --publish never -c.npmRebuild=false
+        shell: bash
       - run: node scripts/check-win-package.mjs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: github.event.repository.private

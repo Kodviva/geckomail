@@ -303,10 +303,11 @@ describe('motordan röleye teslim', () => {
     expect(cs.map((c) => open(c, d).level)).toEqual(['normal', 'urgent'])
     expect(cs[0].length).toBe(cs[1].length)
     const strip = (h: http2.IncomingHttpHeaders): Record<string, unknown> => {
-      const { authorization: _a, 'content-length': _b, ...rest } = h
+      const { authorization: _a, 'content-length': _b, 'apns-expiration': _c, ...rest } = h // süre saniyeye bağlı, aşağıda ayrı karşılaştırılır
       return rest
     }
     expect(strip(seen[0].headers)).toEqual(strip(seen[1].headers))
+    expect(Math.abs(Number(seen[0].headers['apns-expiration']) - Number(seen[1].headers['apns-expiration']))).toBeLessThanOrEqual(1)
     const shape = relayRequests.filter((r) => r.body.includes('"c"')).map((r) => Object.keys(r.headers).sort())
     expect(shape[0]).toEqual(shape[1])
   })

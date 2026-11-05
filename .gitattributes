@@ -1,0 +1,18 @@
+* text=auto eol=lf
+*.bat text eol=crlf
+*.ics -text
+*.eml -text
+*.ico binary
+*.icns binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.der binary
+*.crt binary
+*.p12 binary
+*.sqlite binary
+*.db binary

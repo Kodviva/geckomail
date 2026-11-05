@@ -267,6 +267,8 @@ input:disabled, select:disabled, textarea:disabled { opacity: 0.5; cursor: not-a
 [data-tip][aria-expanded='true']::after { display: none; }
 [data-tip-align='start']::after { inset-inline-start: 0; transform: none; }
 [data-tip-align='end']::after { inset-inline-start: auto; inset-inline-end: 0; transform: none; }
+/* dar ekranda ve dokunmatikte ipucu açılmaz; görünmez hali bile sayfayı yatay taşırır */
+@media (max-width: 767px), (hover: none) { [data-tip]::after { display: none; } }
 @media (prefers-reduced-motion: reduce) {
   [data-tip]::after, .chip, .segmented > button, .qb, :where(.btn, button) { transition: none !important; }
 }
