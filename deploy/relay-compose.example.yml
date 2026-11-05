@@ -1,0 +1,46 @@
+# geckomail-relay — örnek compose. Röle içerik görmez: yalnız platform, APNs ortamı, motor açık anahtarı, sabit boylu şifreli kutu ve
+# bağlantı anında IP görür; IP yazılmaz. TLS için önüne bir ters vekil koyun, port yalnız vekilden erişilebilir kalsın.
+#
+# Sağlayıcı anahtarları Docker secret olarak verilir. Konteyner uid 10001 ile çalışır; compose dosya sırlarında sahiplik ana makinedeki
+# dosyadan gelir:
+#   sudo chown 10001:10001 apns_key.p8 fcm_service_account.json && sudo chmod 0400 apns_key.p8 fcm_service_account.json
+# Bir sağlayıcının değişkenleri ve sırrı verilmezse süreç yine açılır, o platforma her gönderim 'retry' döner.
+services:
+  relay:
+    image: ghcr.io/kodviva/geckomail-relay:v2.0.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8090:8090" # yalnız ters vekil erişsin
+    environment:
+      # Motorların imzaladığı hedef: GECKO_RELAY_URL'deki ana makine ile aynı olmalı, yoksa istekler 401 alır
+      RELAY_PUBLIC_HOST: relay.kodviva.com
+      # Önünüzde tek ters vekil varsa 1 (oran sınırındaki IP X-Forwarded-For'dan okunur); doğrudan erişimde 0.
+      # UYARI: Değer gerçek vekil sayısıyla aynı olmalı ve port yalnız vekilden erişilebilir kalmalı. Eksik yazılırsa bütün istemciler
+      # vekilin tek IP'sinde toplanır, fazla ya da port açıksa X-Forwarded-For uydurularak IP sınırları aşılır.
+      RELAY_TRUSTED_PROXY_DEPTH: "1"
+      RELAY_APNS_KEY_FILE: /run/secrets/apns_key
+      RELAY_APNS_KEY_ID: ABC123DEFG
+      RELAY_APNS_TEAM_ID: DEF123GHIJ
+      RELAY_APNS_TOPIC: com.kodviva.geckomail
+      RELAY_FCM_SERVICE_ACCOUNT_FILE: /run/secrets/fcm_service_account
+    secrets:
+      - apns_key
+      - fcm_service_account
+    volumes:
+      - relay-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+secrets:
+  apns_key:
+    file: ./apns_key.p8
+  fcm_service_account:
+    file: ./fcm_service_account.json
+
+volumes:
+  relay-data:

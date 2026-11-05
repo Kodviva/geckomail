@@ -1,0 +1,19 @@
+GeckoMail, kendi sunucunuzda çalışan GeckoMail motoruna bağlanan e-posta uygulamasıdır. Uygulama tek başına çalışmaz: yöneticinizin verdiği sunucu adresi gerekir. Sunucuyu kendiniz kurabilirsiniz, yazılım açık kaynaktır.
+
+Tüm hesaplar tek yerde
+Birden çok posta hesabını tek gelen kutusunda okuyun, yanıtlayın, arşivleyin. Etiketler, kurallar, ertelenen iletiler ve takip hatırlatmaları sunucunuzda çalışır, telefon kapalıyken de sürer.
+
+Veriniz sizde kalır
+Posta, hesap parolaları ve kurallar kendi sunucunuzdadır. Kodviva bunları görmez, saklamaz.
+
+Bildirimler şifreli
+Yeni posta bildirimi sunucunuzda cihazınızın anahtarıyla şifrelenir ve yalnız telefonunuzda çözülür. Bildirim aktarıcısı içeriği, gönderici adını ya da konuyu göremez. Bildirimden okundu işaretleyebilir, arşivleyebilir, yanıtlayabilirsiniz.
+
+Uygulama kilidi
+Face ID, Touch ID, parmak izi ya da cihaz parolasıyla uygulamayı kilitleyin. Kilitliyken bildirim eylemleri çalışmaz.
+
+Telefona uygun
+Aynı arayüz telefon ve tablette çalışır; paylaş menüsünden dosya eklenir, ekler sistem görüntüleyicisiyle açılır.
+
+Bilmeniz gerekenler
+Kendinden imzalı sunucu sertifikası desteklenmez. Geçiş anahtarı, hesap bağlama, yedekleme ve yönetim işleri sistem tarayıcısında yapılır.

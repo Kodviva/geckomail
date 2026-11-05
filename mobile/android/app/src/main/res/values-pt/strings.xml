@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- OTOMATİK ÜRETİLDİ — mobile/scripts/gen-native-strings.mjs -->
+<resources>
+    <string name="push_fallback">Novo e-mail</string>
+    <string name="notify_action_read">Lido</string>
+    <string name="notify_action_archive">Arquivar</string>
+    <string name="notify_action_reply">Responder</string>
+    <string name="channel_normal">E-mail</string>
+    <string name="channel_urgent">E-mail urgente</string>
+    <string name="faceid_reason">Confirme sua identidade para desbloquear o app</string>
+    <string name="push_relogin">É necessário entrar novamente. Toque para abrir.</string>
+    <string name="lock_title">GeckoMail está bloqueado</string>
+    <string name="webview_update">O GeckoMail precisa do Android System WebView atualizado. Atualize-o pela Play Store.</string>
+</resources>

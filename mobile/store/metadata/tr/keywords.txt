@@ -1,0 +1,1 @@
+e-posta,imap,kendi sunucu,gizlilik,uçtan uca,bildirim,çoklu hesap,ekip

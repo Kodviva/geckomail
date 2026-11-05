@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<D:multistatus xmlns:D="DAV:" xmlns:caldav="urn:ietf:params:xml:ns:caldav" xmlns:cs="http://calendarserver.org/ns/" xmlns:ical="http://apple.com/ns/ical/">
+  <D:response>
+    <D:href>/dav/cal/is/</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:displayname>İş &amp; Toplantı</D:displayname>
+        <D:resourcetype><D:collection/><caldav:calendar/></D:resourcetype>
+        <cs:getctag>ctag-1</cs:getctag>
+        <D:sync-token>http://example.test/ns/sync/7</D:sync-token>
+        <ical:calendar-color>#FF0000FF</ical:calendar-color>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+    <D:propstat>
+      <D:prop><D:owner/></D:prop>
+      <D:status>HTTP/1.1 404 Not Found</D:status>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/dav/cal/is/a.ics</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:getetag>&quot;e1&quot;</D:getetag>
+        <D:resourcetype/>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+</D:multistatus>

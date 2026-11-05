@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- OTOMATİK ÜRETİLDİ — mobile/scripts/gen-native-strings.mjs -->
+<resources>
+    <string name="push_fallback">新着メール</string>
+    <string name="notify_action_read">既読</string>
+    <string name="notify_action_archive">アーカイブ</string>
+    <string name="notify_action_reply">返信</string>
+    <string name="channel_normal">メール</string>
+    <string name="channel_urgent">緊急メール</string>
+    <string name="faceid_reason">アプリのロックを解除するには本人確認を行ってください</string>
+    <string name="push_relogin">再度サインインが必要です。タップして開きます。</string>
+    <string name="lock_title">GeckoMail はロックされています</string>
+    <string name="webview_update">GeckoMail には最新の Android System WebView が必要です。Play ストアで更新してください。</string>
+</resources>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- OTOMATİK ÜRETİLDİ — mobile/scripts/gen-native-strings.mjs -->
+<resources>
+    <string name="push_fallback">नया ईमेल</string>
+    <string name="notify_action_read">पढ़ा गया</string>
+    <string name="notify_action_archive">संग्रहित करें</string>
+    <string name="notify_action_reply">उत्तर दें</string>
+    <string name="channel_normal">मेल</string>
+    <string name="channel_urgent">ज़रूरी मेल</string>
+    <string name="faceid_reason">ऐप अनलॉक करने के लिए अपनी पहचान सत्यापित करें</string>
+    <string name="push_relogin">फिर से साइन इन करना ज़रूरी है। खोलने के लिए टैप करें।</string>
+    <string name="lock_title">GeckoMail लॉक है</string>
+    <string name="webview_update">GeckoMail के लिए अपडेट किया हुआ Android System WebView ज़रूरी है। कृपया इसे Play Store से अपडेट करें।</string>
+</resources>

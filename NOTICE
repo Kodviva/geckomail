@@ -1,0 +1,21 @@
+GeckoMail
+Copyright (C) 2026 Kodviva
+
+Bu program serbest yazılımdır: GNU Affero Genel Kamu Lisansı sürüm 3 (AGPL-3.0-only) koşullarıyla
+dağıtılır, tam metin LICENSE dosyasındadır. Bu dosya, lisansın 7. bölümü uyarınca ek koşulları içerir.
+
+Ek koşul, bölüm 7(b): atıfın korunması
+  Arayüzdeki "GeckoMail · Kodviva" atfı (giriş ekranı ve Ayarlar › Genel › Hakkında), bu programın
+  değiştirilmiş sürümlerinde ve bu programa dayanan çalışmalarda görünür biçimde korunur. Değiştirilmiş
+  sürüm, atfa ek olarak değiştirildiğini ve kendi adını belirtebilir. Atfın korunması, GeckoMail adını
+  ya da logosunu ürün adı olarak kullanma izni vermez: bkz. TRADEMARKS.md.
+
+Ek izin, bölüm 7: Firebase istemci kitaplıkları
+  Bu programı Google Firebase istemci kitaplıklarıyla (Android bildirim teslimi için kullanılan Firebase
+  Cloud Messaging ve bağımlılıkları) bağlamanıza ya da birleştirmenize izin verilir. Bu kitaplıkların
+  kaynak kodunu, ortaya çıkan çalışmayı iletirken sunmanız gerekmez. Programın geri kalanı için AGPL-3.0
+  koşulları geçerliliğini korur. Değiştirilmiş sürümünüzde bu izni kaldırabilirsiniz.
+
+Ağ kullanıcıları için kaynak (AGPL §13)
+  Arayüzdeki "Kaynak kodu" bağlantısı https://github.com/kodviva/geckomail adresini gösterir. Sunucuyu
+  değiştirerek işletiyorsanız bağlantıyı kendi kaynağınıza çevirin: src/shared/brand.ts.

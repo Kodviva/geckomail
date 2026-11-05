@@ -1,0 +1,19 @@
+GeckoMail is the email app for the GeckoMail engine running on your own server. The app does not work on its own: you need a server address from your administrator. You can run the server yourself, the software is open source.
+
+All accounts in one place
+Read, reply to and archive several mail accounts in one inbox. Labels, rules, snoozed messages and follow-up reminders run on your server and keep working while your phone is off.
+
+Your data stays with you
+Mail, account passwords and rules live on your own server. Kodviva does not see or store them.
+
+Encrypted notifications
+New mail notifications are encrypted on your server with your device's key and can only be decrypted on your phone. The notification relay cannot see the content, sender name or subject. Mark as read, archive or reply right from the notification.
+
+App lock
+Lock the app with Face ID, Touch ID, fingerprint or the device passcode. Notification actions do not run while it is locked.
+
+Made for phones
+The same interface works on phone and tablet. Add files from the share menu, open attachments in the system viewer.
+
+Good to know
+Self-signed server certificates are not supported. Passkeys, account linking, backups and administration open in the system browser.

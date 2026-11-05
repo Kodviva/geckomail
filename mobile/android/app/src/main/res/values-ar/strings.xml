@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- OTOMATİK ÜRETİLDİ — mobile/scripts/gen-native-strings.mjs -->
+<resources>
+    <string name="push_fallback">بريد جديد</string>
+    <string name="notify_action_read">مقروء</string>
+    <string name="notify_action_archive">أرشفة</string>
+    <string name="notify_action_reply">رد</string>
+    <string name="channel_normal">البريد</string>
+    <string name="channel_urgent">بريد عاجل</string>
+    <string name="faceid_reason">تحقق من هويتك لفتح التطبيق</string>
+    <string name="push_relogin">يلزم تسجيل الدخول مرة أخرى. اضغط للفتح.</string>
+    <string name="lock_title">GeckoMail مقفل</string>
+    <string name="webview_update">يحتاج GeckoMail إلى إصدار حديث من Android System WebView. يُرجى تحديثه من متجر Play.</string>
+</resources>

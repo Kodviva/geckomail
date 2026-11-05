@@ -1,0 +1,1 @@
+email,imap,self-hosted,privacy,encrypted push,multi account,team,server

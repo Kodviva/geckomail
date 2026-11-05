@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- OTOMATİK ÜRETİLDİ — mobile/scripts/gen-native-strings.mjs -->
+<resources>
+    <string name="app_name">GeckoMail</string>
+    <string name="title_activity_main">GeckoMail</string>
+    <string name="package_name">com.kodviva.geckomail</string>
+    <string name="custom_url_scheme">com.kodviva.geckomail</string>
+    <string name="push_fallback">New mail</string>
+    <string name="notify_action_read">Mark read</string>
+    <string name="notify_action_archive">Archive</string>
+    <string name="notify_action_reply">Reply</string>
+    <string name="channel_normal">Mail</string>
+    <string name="channel_urgent">Urgent mail</string>
+    <string name="faceid_reason">Verify your identity to unlock the app</string>
+    <string name="push_relogin">Sign in again. Tap to open.</string>
+    <string name="lock_title">GeckoMail is locked</string>
+    <string name="webview_update">GeckoMail needs an up-to-date Android System WebView. Please update it from the Play Store.</string>
+</resources>

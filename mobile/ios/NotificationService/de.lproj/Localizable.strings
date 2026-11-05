@@ -1,0 +1,12 @@
+/* OTOMATİK ÜRETİLDİ — mobile/scripts/gen-native-strings.mjs */
+"PUSH_FALLBACK" = "Neue E-Mail";
+"sync.notify.action.read" = "Gelesen";
+"sync.notify.action.archive" = "Archivieren";
+"sync.notify.action.reply" = "Antworten";
+"mobile.channel.normal" = "E-Mail";
+"mobile.channel.urgent" = "Dringende E-Mail";
+"mobile.faceid.reason" = "Bestätigen Sie Ihre Identität, um die App zu entsperren";
+"mobile.push.relogin" = "Erneute Anmeldung erforderlich. Zum Öffnen tippen.";
+"mobile.lock.title" = "GeckoMail ist gesperrt";
+"mobile.webview.update" = "GeckoMail benötigt ein aktuelles Android System WebView. Bitte aktualisieren Sie es im Play Store.";
+"mobile.share.openApp" = "Öffnen Sie GeckoMail";

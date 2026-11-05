@@ -1,0 +1,9 @@
+# S/MIME test fikstürleri yalnız test anahtarı içerir, üretimle ilgisi yoktur (bkz. SECURITY.md)
+title = "GeckoMail"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "S/MIME test anahtarları"
+paths = ['''src/sync/smime/__tests__/fixtures/.*''']

@@ -1,0 +1,89 @@
+# Sunucu imajı (linux/amd64 + linux/arm64). PR'da yalnız derlenir; `v*` etiketi itilince ghcr.io'ya gönderilir
+# ve derleme kaynağı kanıtlanır (attest-build-provenance). Depo gizliyse paket de gizli kalır.
+name: Server image
+
+on:
+  pull_request:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # K3: imajın Node + OpenSSL ikilisi S/MIME şifrelerini sunmuyorsa hat burada durur
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: Dockerfile.server
+          platforms: linux/amd64
+          load: true
+          tags: geckomail-server:selftest
+      - name: S/MIME özdenetimi
+        run: docker run --rm -e GECKO_PUBLIC_ORIGIN=http://localhost geckomail-server:selftest smime-selftest
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: Dockerfile.server
+          platforms: linux/amd64,linux/arm64
+          push: false
+
+  push:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # ghcr.io adları küçük harf olmalı; sahip adı büyük harf içerebilir
+      - name: İmaj adı
+        id: img
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: echo "name=ghcr.io/${OWNER,,}/geckomail-server" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # K3: imajın Node + OpenSSL ikilisi S/MIME şifrelerini sunmuyorsa hat burada durur
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: Dockerfile.server
+          platforms: linux/amd64
+          load: true
+          tags: geckomail-server:selftest
+      - name: S/MIME özdenetimi
+        run: docker run --rm -e GECKO_PUBLIC_ORIGIN=http://localhost geckomail-server:selftest smime-selftest
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: Dockerfile.server
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.img.outputs.name }}:${{ github.ref_name }}
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.img.outputs.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true

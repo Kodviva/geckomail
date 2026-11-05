@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- OTOMATİK ÜRETİLDİ — mobile/scripts/gen-native-strings.mjs -->
+<resources>
+    <string name="push_fallback">新邮件</string>
+    <string name="notify_action_read">已读</string>
+    <string name="notify_action_archive">归档</string>
+    <string name="notify_action_reply">回复</string>
+    <string name="channel_normal">邮件</string>
+    <string name="channel_urgent">紧急邮件</string>
+    <string name="faceid_reason">请验证身份以解锁应用</string>
+    <string name="push_relogin">需要重新登录。轻触以打开。</string>
+    <string name="lock_title">GeckoMail 已锁定</string>
+    <string name="webview_update">GeckoMail 需要最新版本的 Android System WebView。请在 Play 商店中更新。</string>
+</resources>

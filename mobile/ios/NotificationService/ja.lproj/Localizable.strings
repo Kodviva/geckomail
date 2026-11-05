@@ -1,0 +1,12 @@
+/* OTOMATİK ÜRETİLDİ — mobile/scripts/gen-native-strings.mjs */
+"PUSH_FALLBACK" = "新着メール";
+"sync.notify.action.read" = "既読";
+"sync.notify.action.archive" = "アーカイブ";
+"sync.notify.action.reply" = "返信";
+"mobile.channel.normal" = "メール";
+"mobile.channel.urgent" = "緊急メール";
+"mobile.faceid.reason" = "アプリのロックを解除するには本人確認を行ってください";
+"mobile.push.relogin" = "再度サインインが必要です。タップして開きます。";
+"mobile.lock.title" = "GeckoMail はロックされています";
+"mobile.webview.update" = "GeckoMail には最新の Android System WebView が必要です。Play ストアで更新してください。";
+"mobile.share.openApp" = "GeckoMail を開いてください";

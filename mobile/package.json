@@ -1,0 +1,26 @@
+{
+  "name": "geckomail-mobile",
+  "version": "2.0.0",
+  "private": true,
+  "description": "GeckoMail iOS ve Android kabuğu (Capacitor); arayüz src/renderer'dan gelir",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "build:debug": "vite build --mode development",
+    "strings": "node scripts/gen-native-strings.mjs",
+    "strings:check": "node scripts/gen-native-strings.mjs --check",
+    "sync": "cap sync"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.6.0",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/core": "8.6.0",
+    "@capacitor/ios": "8.6.0",
+    "@capacitor/keyboard": "8.0.6",
+    "@capacitor/splash-screen": "8.0.2",
+    "@capacitor/status-bar": "8.0.4"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.0"
+  }
+}

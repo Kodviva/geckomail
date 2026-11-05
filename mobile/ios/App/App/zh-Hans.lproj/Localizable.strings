@@ -1,0 +1,12 @@
+/* OTOMATİK ÜRETİLDİ — mobile/scripts/gen-native-strings.mjs */
+"PUSH_FALLBACK" = "新邮件";
+"sync.notify.action.read" = "已读";
+"sync.notify.action.archive" = "归档";
+"sync.notify.action.reply" = "回复";
+"mobile.channel.normal" = "邮件";
+"mobile.channel.urgent" = "紧急邮件";
+"mobile.faceid.reason" = "请验证身份以解锁应用";
+"mobile.push.relogin" = "需要重新登录。轻触以打开。";
+"mobile.lock.title" = "GeckoMail 已锁定";
+"mobile.webview.update" = "GeckoMail 需要最新版本的 Android System WebView。请在 Play 商店中更新。";
+"mobile.share.openApp" = "请打开 GeckoMail";

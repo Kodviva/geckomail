@@ -1,0 +1,79 @@
+# Her push/PR'da: tip denetimi, lint, testler (gerçek migration'lı SQLite dahil) ve üretim derlemesi.
+# Yayın (imzalı dmg) burada değil — `npm run release` yerelde, imza anahtarları Mac'te.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+      # postinstall (electron-builder install-app-deps) Electron indirip yerel modülleri Electron ABI'sine
+      # derler; testler düz Node'da koştuğu için atlanır. better-sqlite3 N-API: Node için ön-derlemeli iner.
+      - run: npm ci --ignore-scripts
+      - run: npm rebuild better-sqlite3
+      # yalnız çalışma bağımlılıkları: paketlenen koddaki yüksek/kritik açık derlemeyi durdurur
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  # Mobil kabuk: Capacitor bağımlılıkları kendi kilidinde; arayüz kökten derlenir, üretilmiş yerel dizgiler eşit olmalı.
+  mobile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm ci
+        working-directory: mobile
+      - run: npm audit --audit-level=high
+        working-directory: mobile
+      - run: npx tsc --noEmit -p mobile/tsconfig.json
+      - run: npm run build:mobile
+      - run: npm run strings:check
+        working-directory: mobile
+
+  # Web istemcisi uçtan uca: derlenmiş sunucu + üç tarayıcı motoru (playwright.config.ts). Passkey senaryoları
+  # yalnız Chromium'da (sanal doğrulayıcı CDP ile); izler yalnız hatada yüklenir.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm rebuild better-sqlite3
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: e2e-izleri
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore

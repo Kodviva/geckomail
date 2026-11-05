@@ -1,0 +1,12 @@
+/* OTOMATİK ÜRETİLDİ — mobile/scripts/gen-native-strings.mjs */
+"PUSH_FALLBACK" = "Yeni mail";
+"sync.notify.action.read" = "Okundu";
+"sync.notify.action.archive" = "Arşivle";
+"sync.notify.action.reply" = "Yanıtla";
+"mobile.channel.normal" = "Posta";
+"mobile.channel.urgent" = "Acil posta";
+"mobile.faceid.reason" = "Uygulama kilidini açmak için kimliğinizi doğrulayın";
+"mobile.push.relogin" = "Yeniden giriş gerekli. Açmak için dokunun.";
+"mobile.lock.title" = "GeckoMail kilitli";
+"mobile.webview.update" = "GeckoMail için Android System WebView’in güncel olması gerekir. Lütfen Play Store’dan güncelleyin.";
+"mobile.share.openApp" = "GeckoMail'i açın";

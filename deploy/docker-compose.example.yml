@@ -1,0 +1,54 @@
+# GeckoMail sunucusu — örnek compose. Kopyalayıp düzenleyin; TLS için önüne bir ters vekil (Caddy/nginx) koyun.
+#
+# Ana anahtar dosyası (şifrelemenin anahtarı) Docker secret olarak verilir. Konteyner uid 10001 ile çalışır ve
+# sunucu anahtar dosyasını yalnız sahibi bu uid ve izni 0600/0400 ise kabul eder (gevşek izin reddedilir).
+# Compose'un dosya sırlarında uid/gid/mode alanları yok sayılır; sahiplik ana makinedeki dosyadan gelir:
+#   head -c 32 /dev/urandom > geckomail_key
+#   sudo chown 10001:10001 geckomail_key && sudo chmod 0400 geckomail_key
+# Sır kullanmak istemezseniz `secrets`, `GECKO_KEY_FILE` ve servisteki `secrets` satırlarını silin: anahtar ilk
+# açılışta /data birimine (master.key, 0600) kendiliğinden üretilir. Anahtar kaybolursa şifreli veriler açılamaz;
+# anahtarı veriden ayrı yedekleyin.
+services:
+  geckomail:
+    image: ghcr.io/kodviva/geckomail-server:v2.0.0
+    # Ayarlar › Yedekleme'deki "Şimdi yeniden başlat" sunucuyu düzgünce kapatır (çıkış kodu 0); yeniden açan bu
+    # ilkedir (on-failure yetmez). Açılışta bekleyen geri yükleme uygulanır, önceki veritabanı
+    # /data/geckomail.db.bak-<zaman> olarak kalır. Uygulanamazsa mevcut DB korunur ve süreç 3 ile çıkar:
+    # günlükteki satıra bakıp /data/restore-pending.db'yi silin. Yedekteki hesap şifreleri bu kurulumun ana
+    # anahtarıyla şifrelidir: başka kurulumda geri yüklerseniz aynı anahtar dosyasını kullanın.
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080" # yalnız ters vekil erişsin
+    environment:
+      # Tarayıcının kullandığı tam adres (şema + alan adı); zorunlu. Gmail / Microsoft 365 OAuth için her kurulum
+      # kendi istemcisini kaydeder; sağlayıcıya girilecek yönlendirme adresi: https://<alan>/oauth/callback
+      # (ör. https://posta.example.com/oauth/callback — Ayarlar › Hesaplar › OAuth istemcileri de gösterir)
+      GECKO_PUBLIC_ORIGIN: https://posta.example.com
+      GECKO_KEY_FILE: /run/secrets/geckomail_key
+      # Önünüzde tek ters vekil varsa 1 (istemci IP'si X-Forwarded-For'dan okunur); doğrudan erişimde 0
+      GECKO_TRUSTED_PROXY_DEPTH: "1"
+      # Anlık (IMAP IDLE) algılanan hesap sayısı üst sınırı; kalanı 120 sn aralıkla yoklanır
+      # GECKO_IDLE_MAX: "40"
+      # GECKO_DAV_PRIVATE_HOSTS: "dav.ic.example.com:5232"  # iç ağdaki CalDAV/CardDAV sunucuları, virgüllü; portsuz ad 80, 443, 8443 demek
+      # Mobil uygulama yolu varsayılan açık; "0" Bearer, CORS ve WebSocket biletini tümüyle kapatır
+      # GECKO_MOBILE: "0"
+      # Mobil bildirim rölesi; "off" APNs/FCM iletimini kapatır, kendi röleniz için https kökeni yazın
+      # GECKO_RELAY_URL: "https://relay.kodviva.com"
+    secrets:
+      - geckomail_key
+    volumes:
+      - geckomail-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+secrets:
+  geckomail_key:
+    file: ./geckomail_key
+
+volumes:
+  geckomail-data:

@@ -1,0 +1,52 @@
+# GeckoMail sunucu imajı (amd64 + arm64). Çok aşamalı; taban imajlar digest ile sabit.
+# Electron imaja girmez: derleme aşaması betik çalıştırmadan kurar, çalışma bağımlılıkları ayrı küçük bir manifestle kurulur.
+
+# 1) Paket: Vite SSR ile out/server/index.mjs ve web istemcisi out/web (devDependencies gerekir; Electron ikilisi inmez)
+FROM node:22-bookworm@sha256:18a6d90fd60542269850c80ca03b29b1d9b14d6b221ac7ee8e35b0d33ef904bd AS build
+WORKDIR /src
+COPY package.json package-lock.json ./
+# --ignore-scripts: postinstall (electron-builder install-app-deps) çalışmaz, Electron indirilmez
+RUN npm ci --ignore-scripts
+COPY vite.server.config.ts vite.web.config.ts tsconfig.json ./
+COPY src ./src
+RUN npm run build:server
+
+# 2) Çalışma bağımlılıkları: yalnız better-sqlite3 + ws, sürümler kilit dosyasından.
+# better-sqlite3 13 N-API ön-derlemeleriyle gelir (Electron ABI'si değil, Node ABI'sinden bağımsız); ana makine
+# node_modules'u kopyalanmaz, kurulum bu imajın Node'unda yapılır ve yükleme denemesi derlemeyi başarısız kılar.
+FROM node:22-bookworm@sha256:18a6d90fd60542269850c80ca03b29b1d9b14d6b221ac7ee8e35b0d33ef904bd AS deps
+WORKDIR /deps
+COPY package-lock.json /tmp/package-lock.json
+RUN node -e "\
+const l = require('/tmp/package-lock.json').packages;\
+const dependencies = {};\
+for (const n of ['better-sqlite3', 'ws']) dependencies[n] = l['node_modules/' + n].version;\
+require('fs').writeFileSync('package.json', JSON.stringify({ name: 'geckomail-server-runtime', private: true, dependencies }));\
+" \
+ && npm install --omit=dev --no-audit --no-fund \
+ && node -e "new (require('better-sqlite3'))(':memory:').prepare('select 1').get(); require('ws')" \
+ && rm -rf node_modules/better-sqlite3/deps node_modules/better-sqlite3/src node_modules/better-sqlite3/build \
+ && find node_modules/better-sqlite3/prebuilds -type f ! -name "linux-$(node -p process.arch).node" -delete
+
+# 3) Çalışma imajı
+FROM node:22-bookworm-slim@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da
+ENV NODE_ENV=production \
+    GECKO_DATA_DIR=/data \
+    GECKO_LISTEN=0.0.0.0:8080
+# Kök olmayan kullanıcı; /data bu kullanıcıya aittir (adlandırılmış volume ilk kullanımda sahipliği devralır)
+RUN groupadd --gid 10001 gecko \
+ && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin gecko \
+ && mkdir /data && chown 10001:10001 /data
+WORKDIR /app
+COPY --from=deps /deps/node_modules ./node_modules
+COPY --from=build /src/out/server ./server
+# web istemcisi: sunucu ../web'den verir (GECKO_WEB_DIR varsayılanı)
+COPY --from=build /src/out/web ./web
+USER 10001:10001
+VOLUME /data
+EXPOSE 8080
+# Port (ve belirli bir adres verildiyse o adres) GECKO_LISTEN'den; 0.0.0.0 / :: dinleniyorsa geri döngüden sorulur
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["node", "-e", "const l=process.env.GECKO_LISTEN||'0.0.0.0:8080',i=l.lastIndexOf(':');let h=l.slice(0,i);if(h[0]=='[')h=h.slice(1,-1);if(!h||h=='0.0.0.0'||h=='::')h='127.0.0.1';if(h.includes(':'))h='['+h+']';fetch('http://'+h+':'+l.slice(i+1)+'/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+ENTRYPOINT ["node", "/app/server/index.mjs"]
+CMD ["serve"]

@@ -1,0 +1,294 @@
+import type Database from 'better-sqlite3'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { t } from '../../shared/i18n'
+import type { SessionUser } from '../../shared/rpc'
+import { openDb } from '../db'
+import { makeQueries } from '../db/queries'
+import type { OpQueue } from '../opQueue'
+import { RpcHub } from '../rpcHub'
+import type { Scheduler } from '../scheduler'
+
+// R23 RBAC matrisi: (girişsiz · üye · yönetici) × yöntem. Yetki kontrolü handle()'ın başında ve hesap
+// düzeyinde (assertCanView/Manage, resolveAccountIds); bir yöntem eklenip kontrol unutulursa burada düşer.
+type Handle = { handle(method: string, params: unknown): Promise<unknown>; currentUser: SessionUser | null }
+
+const ALL_METHODS = RpcHub.methodNames()
+const { publicMethods, adminOnly } = RpcHub.permissionSets()
+
+describe('RBAC matrisi', () => {
+  let dir: string
+  let db: Database.Database
+  let q: ReturnType<typeof makeQueries>
+  let srv: Handle
+  let accA: number
+  let accB: number
+  let msgA: number
+  let msgB: number
+  let groupA: number
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'gecko-rbac-'))
+    db = openDb(dir)
+    q = makeQueries(db)
+    const mk = (email: string) =>
+      q.insertAccount({ email, displayName: null, imapHost: 'm.t.co', imapPort: 993, smtpHost: 'm.t.co', smtpPort: 465, passwordEnc: Buffer.from('x') })
+    accA = mk('a@t.co')
+    accB = mk('b@t.co')
+    const gA = q.insertGroup('Görünen', '#111111')
+    groupA = gA
+    const gB = q.insertGroup('Gizli', '#222222')
+    q.setAccountGroup(accA, gA)
+    q.setAccountGroup(accB, gB)
+    const add = (acc: number) => {
+      const f = q.upsertFolder(acc, 'INBOX', 'inbox')
+      return Number(
+        db.prepare(`INSERT INTO messages (folder_id, account_id, folder_kind, uid, date, subject, flagged, thread_root) VALUES (?,?,?,?,?,?,1,?)`)
+          .run(f, acc, 'inbox', 1, 1000, 'gizli konu', `<r${acc}>`).lastInsertRowid
+      )
+    }
+    msgA = add(accA)
+    msgB = add(accB)
+    q.ftsUpsert(msgA, 'gizli konu', 'x', '', null)
+    q.ftsUpsert(msgB, 'gizli konu', 'x', '', null)
+    const stub = new Proxy({}, { get: () => () => undefined })
+    const fakePort = { send() {}, onMessage() {}, onClose() {}, close() {} }
+    srv = new RpcHub({
+      q, scheduler: stub as Scheduler, opq: stub as OpQueue, creds: new Map(), attachDir: join(dir, 'att'),
+      encrypt: async (v) => v.map((s) => new TextEncoder().encode(s)), decrypt: async (b) => b.map((x) => new TextDecoder().decode(x)),
+      userData: dir, dbSchemaVersion: () => 0
+    }, 'desktop').openSession(fakePort) as unknown as Handle
+    srv.currentUser = null
+  })
+  afterEach(() => {
+    db.close()
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  const member = (): SessionUser => ({ id: 2, username: 'uye', role: 'member', permittedGroupIds: [groupA], manageableGroupIds: [groupA] })
+
+  it('yöntem listesi handler haritasından okundu', () => {
+    expect(ALL_METHODS.length).toBeGreaterThan(80)
+  })
+
+  it('girişsiz: herkese açık olanlar dışında her yöntem reddedilir', async () => {
+    for (const m of ALL_METHODS.filter((m) => !publicMethods.includes(m))) {
+      await expect(srv.handle(m, {}), m).rejects.toThrow('Giriş yapmanız gerekiyor')
+    }
+  })
+
+  it('üye: yönetici yöntemlerinin hepsi reddedilir', async () => {
+    srv.currentUser = member()
+    // yalnız sunucu yöntemleri masaüstünde önce bilinmeyen yöntem olur; sunucu tarafı importRpc'de
+    const { serverOnly } = RpcHub.permissionSets()
+    for (const m of adminOnly.filter((x) => !serverOnly.includes(x))) await expect(srv.handle(m, {}), m).rejects.toThrow('yönetici yetkisi')
+  })
+
+  it('üye: yalnız izinli grubun hesaplarını görür', async () => {
+    srv.currentUser = member()
+    const ids = (rows: unknown) => (rows as { id: number }[]).map((r) => r.id)
+    expect(ids(await srv.handle('getAccounts', {}))).toEqual([accA])
+    const list = { accountIds: null, folderKind: 'inbox', cursor: null, limit: 50, unreadOnly: false }
+    expect(ids(await srv.handle('listMessages', list))).toEqual([msgA])
+    expect(ids(await srv.handle('listMessages', { ...list, accountIds: [accB] }))).toEqual([])
+    expect(ids(await srv.handle('listThreads', list))).toEqual([msgA])
+    expect(ids(await srv.handle('search', { query: 'gizli', accountIds: null }))).toEqual([msgA])
+    expect(ids(await srv.handle('search', { query: 'gizli', accountIds: [accB] }))).toEqual([])
+    expect(ids(await srv.handle('listSmart', { view: 'starred', accountIds: null }))).toEqual([msgA])
+    expect(ids(await srv.handle('listSmart', { view: 'starred', accountIds: [accB] }))).toEqual([])
+  })
+
+  it('üye: izinsiz hesabın mesajına/hesabına dokunamaz', async () => {
+    srv.currentUser = member()
+    await expect(srv.handle('getBody', { messageId: msgB })).rejects.toThrow('yetkiniz yok')
+    await expect(srv.handle('markSeen', { messageIds: [msgB], seen: true })).rejects.toThrow('yetkiniz yok')
+    await expect(srv.handle('deleteMessages', { messageIds: [msgB] })).rejects.toThrow('yetkiniz yok')
+    await expect(srv.handle('sendMail', { draft: { accountId: accB, to: 'x@y.co', subject: '', text: '' } })).rejects.toThrow('yetkiniz yok')
+    const fB = q.addFollowup({ accountId: accB, opId: null, messageId: '<z@t>', subject: null, to: null, dueAt: 0 })
+    expect(await srv.handle('listFollowups', {})).toEqual([])
+    await expect(srv.handle('snoozeFollowup', { id: fB, days: 1 })).rejects.toThrow('yetkiniz yok')
+  })
+
+  it('üye: görebildiği iletinin kimliğiyle başka hesabın eki okunamaz (IDOR)', async () => {
+    mkdirSync(join(dir, 'att'), { recursive: true })
+    const file = (n: string) => {
+      const p = join(dir, 'att', n)
+      writeFileSync(p, `icerik-${n}`)
+      return p
+    }
+    const ek = (messageId: number, n: string) =>
+      q.insertAttachment({ messageId, partId: '2', filename: n, mime: 'text/plain', size: 10, contentId: null, diskPath: file(n) })
+    const attA = ek(msgA, 'a.txt')
+    const attB = ek(msgB, 'b.txt')
+    srv.currentUser = member()
+    // kendi eki çalışır
+    expect(await srv.handle('getAttachment', { messageId: msgA, attachmentId: attA })).toEqual({ diskPath: join(dir, 'att', 'a.txt') })
+    expect(await srv.handle('getAttachmentData', { messageId: msgA, attachmentId: attA })).toMatchObject({ base64: Buffer.from('icerik-a.txt').toString('base64') })
+    // görünen ileti + başka hesabın ek kimliği
+    await expect(srv.handle('getAttachment', { messageId: msgA, attachmentId: attB })).rejects.toThrow('Ek bulunamadı')
+    await expect(srv.handle('getAttachmentData', { messageId: msgA, attachmentId: attB })).rejects.toThrow('Ek bulunamadı')
+    // ileti verilmeden: yetki ekin gerçek iletisinin hesabında
+    await expect(srv.handle('getAttachmentData', { attachmentId: attB })).rejects.toThrow('yetkiniz yok')
+    // önbellek zehirlenmez: B'nin ekinin yolu değişmedi
+    expect(q.getAttachment(attB)?.disk_path).toBe(join(dir, 'att', 'b.txt'))
+  })
+
+  it('yönetici: tüm hesaplar', async () => {
+    srv.currentUser = { id: 1, username: 'admin', role: 'admin', permittedGroupIds: [], manageableGroupIds: [] }
+    const ids = (rows: unknown) => (rows as { id: number }[]).map((r) => r.id).sort()
+    expect(ids(await srv.handle('getAccounts', {}))).toEqual([accA, accB].sort())
+    expect(ids(await srv.handle('listSmart', { view: 'starred', accountIds: null }))).toEqual([msgA, msgB].sort())
+  })
+
+  describe('biletli mobil oturum (T8)', () => {
+    const admin: SessionUser = { id: 1, username: 'kok', role: 'admin', permittedGroupIds: [], manageableGroupIds: [] }
+    const session = (ticket: boolean): Handle => {
+      const stub = new Proxy({}, { get: () => () => undefined })
+      const fakePort = { send() {}, onMessage() {}, onClose() {}, close() {} }
+      return new RpcHub({
+        q, scheduler: stub as Scheduler, opq: stub as OpQueue, creds: new Map(), attachDir: join(dir, 'att'),
+        encrypt: async (v) => v.map((s) => new TextEncoder().encode(s)), decrypt: async (b) => b.map((x) => new TextDecoder().decode(x)),
+        userData: dir, dbSchemaVersion: () => 0
+      }, 'server').openSession(fakePort, { user: admin, webSessionId: 's', ticket }) as unknown as Handle
+    }
+
+    it('yönetici yöntemleri, twoFactor* ve parola yöntemleri kapalı', async () => {
+      const refused = ALL_METHODS.filter(RpcHub.ticketRefused)
+      expect(refused).toEqual(expect.arrayContaining([...adminOnly, 'twoFactorStatus', 'twoFactorBegin', 'twoFactorConfirm', 'twoFactorDisable']))
+      expect(ALL_METHODS.filter((m) => /password/i.test(m)).every(RpcHub.ticketRefused)).toBe(true)
+      const s = session(true)
+      const { desktopOnly } = RpcHub.permissionSets() // sunucu modunda zaten kapalı, önceki kapıda düşer
+      for (const m of refused.filter((x) => !desktopOnly.includes(x))) await expect(s.handle(m, {}), m).rejects.toThrow(t('sync.perm.browserRequired'))
+    })
+
+    // Her yöntem burada sınıflandırılır: yeni yöntem iki listeye de yazılmazsa test düşer, karar verilmeden geçemez.
+    const TICKET_CLASSES = {
+      // belirtecin ömrünü aşan etki bırakmaz; gündelik posta işi ve kişinin kendi tercihleri
+      allowed: {
+        account: ['getAccounts', 'getAccountServer', 'getAccountStatusHistory', 'getConnectionStats', 'retryAccount', 'retryAccounts', 'setAccountStarred', 'setMySignature', 'updateAccount'],
+        mail: [
+          'getIncidents', 'listSmart', 'getAttachments', 'getContacts', 'getHourlyVolume', 'listMessages', 'listThreads', 'getThread', 'getThreadMembers', 'getBody',
+          'getSmimeAttachment', 'getAttachment', 'getAttachmentData', 'getRawHeaders', 'getRawSource', 'listSubscriptions', 'unsubscribeSenders', 'unsubscribe', 'search',
+          'fetchRemoteImages', 'markSeen', 'markFlagged', 'snoozeMessages', 'deleteMessages', 'undoDelete', 'markAllSeen', 'getFoldersOf', 'syncFolder', 'moveMessages',
+          'undoMove', 'moveSpecial', 'setViewed', 'pollNow'
+        ],
+        compose: ['sendMail', 'listFollowups', 'closeFollowup', 'snoozeFollowup', 'listTemplates', 'saveTemplate', 'deleteTemplate', 'listOutbox', 'cancelOp', 'retryOp', 'getOpDraft'],
+        pim: [
+          'listContacts', 'getContact', 'saveContact', 'deleteContact', 'importContacts', 'exportContacts', 'promoteCollected', 'mergeContacts', 'listEvents', 'getEvent', 'saveEvent',
+          'deleteEvent', 'getInvite', 'respondInvite', 'applyInviteUpdate', 'applyInviteCancel', 'listPimSources', 'listPimCollections', 'setPimCollectionPref', 'syncPimSource'
+        ],
+        ownNotifications: ['listNotifyRules', 'saveNotifyRule', 'deleteNotifyRule', 'reorderNotifyRules', 'getNotifyAccountPrefs', 'setNotifyAccountPref', 'setMyPrefs'],
+        sieveRead: ['listSieveAccounts', 'getSieveAccount', 'sieveDetect', 'sieveListScripts', 'sieveGetScript', 'sieveCheckScript', 'getSieveVacation'],
+        smime: ['smimeListIdentities', 'smimeListContactCerts', 'smimeCheckRecipients', 'smimeTrustInfo'],
+        session: ['getPrefs', 'setSessionLocale', 'getSecurityNotice', 'getVaultState', 'unlockVault', 'lockVault']
+      },
+      // kalıcı iz bırakır ya da yönetim yüzeyidir
+      refused: {
+        accountLifecycle: ['setAccountEnabled', 'deleteAccount', 'setAccountSecure', 'updateAccountsServer', 'discoverMailServers', 'importPreview', 'importAccounts', 'exportDiagnostics'],
+        sieveWrite: ['sieveSetEnabled', 'sieveSetEndpoint', 'sieveConsent', 'sieveDeployNow', 'sieveRollback', 'sieveSaveScript', 'setSieveVacation', 'getRulePlacements'],
+        automation: [
+          'getRules', 'createRule', 'updateRule', 'deleteRule', 'testRule', 'getWebhooks', 'createWebhook', 'updateWebhook', 'deleteWebhook', 'testWebhook',
+          'getScheduledTriggers', 'createScheduledTrigger', 'updateScheduledTrigger', 'deleteScheduledTrigger', 'getRuleLog'
+        ],
+        pimSources: ['addIcsSubscription', 'connectAccountPim', 'addPersonalDav', 'updatePersonalDavPassword', 'removePimSource'],
+        oauth: ['oauthGetClients', 'oauthSetClients', 'oauthStart', 'oauthCancel', 'oauthFinish'],
+        deviceSync: ['syncPush', 'syncPull', 'setSyncAuto'],
+        credentials: [
+          'changeOwnPassword', 'resetUserPassword', 'ackSecurityNotice', 'twoFactorStatus', 'twoFactorBegin', 'twoFactorConfirm', 'twoFactorDisable', 'resetUserTwoFactor',
+          'smimeImportIdentity', 'smimeExportIdentity', 'smimeRemoveIdentity', 'smimeAddAnchor', 'smimeRemoveAnchor',
+          // kayıtlı sertifika ileride şifreli postayı kimin okuyacağını belirler
+          'smimeSaveContactCert', 'smimeRemoveContactCert'
+        ],
+        vaultAdmin: ['createVault', 'enableVaultBiometric', 'disableVaultBiometric', 'unlockVaultBiometric', 'clearVaultPassphraseFails'],
+        admin: [
+          'setPrefs', 'getUsers', 'createUser', 'updateUser', 'deleteUser', 'getGroups', 'createGroup', 'updateGroup', 'deleteGroup', 'setAccountGroup', 'setGroupPermission',
+          'backupToFile', 'stageRestore', 'importBegin', 'importItem', 'importFinish', 'serverAdminGetConfig', 'serverAdminSetConfig', 'serverAdminClearKey', 'serverAdminTest',
+          'serverAdminBlocked', 'serverAdminUnblock', 'serverAdminAllowed', 'serverAdminAllow', 'serverAdminRemoveAllowed', 'serverAdminAccountDiff'
+        ],
+        // oturum kapatma yalnız çerezli oturumdan: telefon başka oturumları kapatamaz
+        sessions: ['listSessions', 'revokeSession', 'revokeOtherSessions'],
+        desktopAgent: ['registerDesktopAgent', 'notifyAction', 'notifyBacklog'],
+        desktopLogin: ['login', 'logout', 'bootstrapAdmin', 'getLoginBiometric', 'loginBiometric', 'enableLoginBiometric', 'disableLoginBiometric']
+      }
+    }
+
+    it('her RPC yöntemi tam bir sınıfta, sınıf kapıyla aynı', () => {
+      const allowed = Object.values(TICKET_CLASSES.allowed).flat()
+      const refused = Object.values(TICKET_CLASSES.refused).flat()
+      const classified = [...allowed, ...refused]
+      expect(ALL_METHODS.filter((m) => !classified.includes(m)), 'sınıfsız yöntem').toEqual([])
+      expect(classified.filter((m) => !ALL_METHODS.includes(m)), 'olmayan yöntem').toEqual([])
+      expect(classified.filter((m, i) => classified.indexOf(m) !== i), 'iki kez yazılmış').toEqual([])
+      expect(allowed.filter(RpcHub.ticketRefused), 'açık olması gerekirken kapalı').toEqual([])
+      expect(refused.filter((m) => !RpcHub.ticketRefused(m)), 'kapalı olması gerekirken açık').toEqual([])
+    })
+
+    it('izin listesi varsayılan kapalıdır, listedeki her ad gerçek yöntemdir', () => {
+      expect(RpcHub.ticketRefused('yeniYontem')).toBe(true)
+      const { ticketAllowed } = RpcHub.permissionSets()
+      expect(ticketAllowed.filter((m) => !ALL_METHODS.includes(m))).toEqual([])
+    })
+
+    it('Sieve yazımı, otomasyon, kaynak ve cihaz senkronu biletli oturumda çalışmaz', async () => {
+      const s = session(true)
+      for (const m of ['sieveSetEnabled', 'sieveConsent', 'sieveDeployNow', 'setSieveVacation', 'setAccountEnabled', 'createRule', 'createWebhook', 'addPersonalDav', 'removePimSource', 'addIcsSubscription', 'setSyncAuto', 'oauthStart', 'smimeSaveContactCert', 'smimeRemoveContactCert']) {
+        await expect(s.handle(m, { accountId: accA, enabled: false }), m).rejects.toThrow(t('sync.perm.browserRequired'))
+      }
+      expect(q.getAccountRow(accA)?.enabled).toBe(1)
+    })
+
+    it('Parça 6, 7, 8 hassas yöntemleri kapalı', () => {
+      for (const m of [
+        'sieveSetEndpoint', 'sieveSaveScript', 'sieveRollback', 'smimeExportIdentity', 'smimeImportIdentity', 'smimeRemoveIdentity',
+        'smimeAddAnchor', 'smimeRemoveAnchor', 'clearVaultPassphraseFails', 'updatePersonalDavPassword', 'changeOwnPassword', 'registerDesktopAgent'
+      ]) {
+        expect(ALL_METHODS, m).toContain(m)
+        expect(RpcHub.ticketRefused(m), m).toBe(true)
+      }
+      // gündelik okuma ve PIM yazımı mobilde sürer
+      for (const m of ['smimeListIdentities', 'smimeCheckRecipients', 'listSieveAccounts', 'sieveListScripts', 'listPimSources']) expect(RpcHub.ticketRefused(m), m).toBe(false)
+    })
+
+    it('hesabın kasa korumasını kaldıran ya da hesabı silen yöntemler kapalı', async () => {
+      const s = session(true)
+      for (const m of ['setAccountSecure', 'deleteAccount']) {
+        expect(RpcHub.ticketRefused(m), m).toBe(true)
+        await expect(s.handle(m, { accountId: accA, secure: false }), m).rejects.toThrow(t('sync.perm.browserRequired'))
+      }
+      expect(q.getAccountRow(accA)).toBeDefined()
+    })
+
+    it('updateAccount: bağlantı alanına ya da parolaya dokunan yama reddedilir, satır değişmez', async () => {
+      const before = q.getAccountRow(accA)
+      const patches: Record<string, unknown>[] = [
+        { imapHost: 'evil.example.test' }, { imapPort: 143 }, { imapTls: 'starttls' },
+        { smtpHost: 'evil.example.test' }, { smtpPort: 25 }, { smtpTls: 'starttls' },
+        { allowInvalidCerts: true }, { allowInvalidCerts: false }, { password: 'yeni' },
+        { color: '#123456', imapHost: 'evil.example.test' }
+      ]
+      const s = session(true)
+      for (const patch of patches) {
+        await expect(s.handle('updateAccount', { accountId: accA, patch }), JSON.stringify(patch)).rejects.toThrow(t('sync.perm.browserRequired'))
+      }
+      expect(q.getAccountRow(accA)).toEqual(before)
+    })
+
+    it('updateAccount: renk, imza ve görünen ad mobilde değişir', async () => {
+      await session(true).handle('updateAccount', { accountId: accA, patch: { displayName: 'Ad', color: '#123456', signature: 'İmza' } })
+      const row = q.getAccountRow(accA)
+      expect([row?.display_name, row?.color, row?.signature]).toEqual(['Ad', '#123456', 'İmza'])
+    })
+
+    it('updateAccount: biletsiz oturumda bağlantı alanı değişir', async () => {
+      await session(false).handle('updateAccount', { accountId: accA, patch: { smtpPort: 587 } })
+      expect(q.getAccountRow(accA)?.smtp_port).toBe(587)
+    })
+
+    it('posta yöntemleri açık kalır; bilet yoksa kapı yok', async () => {
+      await expect(session(true).handle('getAccounts', {})).resolves.toBeDefined()
+      await expect(session(false).handle('getUsers', {})).resolves.toBeDefined()
+    })
+  })
+})

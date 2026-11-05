@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- OTOMATİK ÜRETİLDİ — mobile/scripts/gen-native-strings.mjs -->
+<resources>
+    <string name="push_fallback">Новое письмо</string>
+    <string name="notify_action_read">Прочитано</string>
+    <string name="notify_action_archive">В архив</string>
+    <string name="notify_action_reply">Ответить</string>
+    <string name="channel_normal">Почта</string>
+    <string name="channel_urgent">Срочная почта</string>
+    <string name="faceid_reason">Подтвердите личность, чтобы разблокировать приложение</string>
+    <string name="push_relogin">Нужно войти снова. Нажмите, чтобы открыть.</string>
+    <string name="lock_title">GeckoMail заблокирован</string>
+    <string name="webview_update">Для GeckoMail нужна актуальная версия Android System WebView. Обновите её в Play Маркете.</string>
+</resources>

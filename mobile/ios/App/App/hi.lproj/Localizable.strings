@@ -1,0 +1,12 @@
+/* OTOMATİK ÜRETİLDİ — mobile/scripts/gen-native-strings.mjs */
+"PUSH_FALLBACK" = "नया ईमेल";
+"sync.notify.action.read" = "पढ़ा गया";
+"sync.notify.action.archive" = "संग्रहित करें";
+"sync.notify.action.reply" = "उत्तर दें";
+"mobile.channel.normal" = "मेल";
+"mobile.channel.urgent" = "ज़रूरी मेल";
+"mobile.faceid.reason" = "ऐप अनलॉक करने के लिए अपनी पहचान सत्यापित करें";
+"mobile.push.relogin" = "फिर से साइन इन करना ज़रूरी है। खोलने के लिए टैप करें।";
+"mobile.lock.title" = "GeckoMail लॉक है";
+"mobile.webview.update" = "GeckoMail के लिए अपडेट किया हुआ Android System WebView ज़रूरी है। कृपया इसे Play Store से अपडेट करें।";
+"mobile.share.openApp" = "GeckoMail खोलें";

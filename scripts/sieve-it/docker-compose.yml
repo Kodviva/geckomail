@@ -1,0 +1,30 @@
+# Görev 8 sınama sunucuları. Yalnız 127.0.0.1'e bağlanır, kalıcı veri yok, `scripts/sieve-it.mjs` başlatıp indirir.
+# Görüntüler digest ile sabit: dovecot etiketi 2.4.5, stalwart etiketi v0.16.27.
+name: geckomail-sieve-it
+services:
+  dovecot:
+    profiles: [dovecot]
+    image: dovecot/dovecot:2.4.5@sha256:43c14def08a57f25107593cbcf64a0a6fbae84a7b9de7aa038513c9b21e91914
+    environment:
+      - USER_PASSWORD
+    ports:
+      - 127.0.0.1::34190
+      - 127.0.0.1::31143
+      - 127.0.0.1::31025
+    volumes:
+      - ./dovecot.conf:/etc/dovecot/conf.d/zz-sieve-it.conf:ro
+      - ./sendmail.sh:/it/sendmail.sh:ro
+  stalwart:
+    profiles: [stalwart]
+    image: stalwartlabs/stalwart:v0.16.27@sha256:c429b311c93db5606598abc1c68225a85a6953183848ae01bee9c6a98885836c
+    environment:
+      - STALWART_RECOVERY_ADMIN
+    ports:
+      - 127.0.0.1::4190
+      - 127.0.0.1::993
+      - 127.0.0.1::465
+      - 127.0.0.1::8080
+    volumes:
+      - ./stalwart-config.json:/etc/stalwart/config.json:ro
+    tmpfs:
+      - /opt/stalwart:uid=2000,gid=2000

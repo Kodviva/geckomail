@@ -1,0 +1,12 @@
+/* OTOMATİK ÜRETİLDİ — mobile/scripts/gen-native-strings.mjs */
+"PUSH_FALLBACK" = "Новое письмо";
+"sync.notify.action.read" = "Прочитано";
+"sync.notify.action.archive" = "В архив";
+"sync.notify.action.reply" = "Ответить";
+"mobile.channel.normal" = "Почта";
+"mobile.channel.urgent" = "Срочная почта";
+"mobile.faceid.reason" = "Подтвердите личность, чтобы разблокировать приложение";
+"mobile.push.relogin" = "Нужно войти снова. Нажмите, чтобы открыть.";
+"mobile.lock.title" = "GeckoMail заблокирован";
+"mobile.webview.update" = "Для GeckoMail нужна актуальная версия Android System WebView. Обновите её в Play Маркете.";
+"mobile.share.openApp" = "Откройте GeckoMail";

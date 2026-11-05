@@ -1,0 +1,15 @@
+<!-- AppxTarget bunu <Extensions> içine aynen yazar. Oturum açılışı burada: addAutoLaunchExtension Enabled="true" yazardı,
+     ayar varsayılan kapalıdır. CLSID src/main/os.ts TOAST_CLSID ile aynı kalır. -->
+        <desktop:Extension Category="windows.startupTask" Executable="app\GeckoMail.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="GeckoMailStartup" Enabled="false" DisplayName="GeckoMail" />
+        </desktop:Extension>
+        <desktop:Extension Category="windows.toastNotificationActivation">
+          <desktop:ToastNotificationActivation ToastActivatorCLSID="ff1728f5-d1ec-4a05-b772-8ba5be532f92" />
+        </desktop:Extension>
+        <com:Extension Category="windows.comServer" xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10">
+          <com:ComServer>
+            <com:ExeServer Executable="app\GeckoMail.exe" DisplayName="GeckoMail">
+              <com:Class Id="ff1728f5-d1ec-4a05-b772-8ba5be532f92" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>

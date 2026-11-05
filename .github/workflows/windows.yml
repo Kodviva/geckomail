@@ -1,0 +1,57 @@
+# Windows: test ve imzasız paket (NSIS ve AppX, x64 ve arm64). Yayın yok; yapıtlar yalnız özel depoda yüklenir,
+# depo herkese açılırsa imzasız paket dışarı çıkmaz.
+name: Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  win-test:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run smoke
+      - run: npm run smoke:upgrade
+
+  win-build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # better-sqlite3 N-API ön derlemesi pakette; arm64 için çapraz derleme gerekmez ve yapılamaz
+      - run: npx electron-builder --win nsis appx --x64 --arm64 --publish never -c.npmRebuild=false
+      - run: node scripts/check-win-package.mjs
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: github.event.repository.private
+        with:
+          name: geckomail-windows
+          path: |
+            release/*.exe
+            release/*.appx
+            release/*.blockmap
+            release/latest.yml
+          retention-days: 14
+          if-no-files-found: error

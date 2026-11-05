@@ -1,0 +1,27 @@
+# Kimlik bilgileri — ASLA commit'leme
+*.mobileconfig
+*.csv
+
+node_modules/
+dist/
+out/
+release/
+*.log
+.DS_Store
+.env
+test-results/
+
+# Mobil sırlar — ASLA commit'leme
+*.p8
+google-services.json
+GoogleService-Info.plist
+*.jks
+*.keystore
+*service-account*.json
+*service_account*.json
+playwright-report/
+
+mobile/ios/GeckoPushCore/.build/
+
+# Geliştirme araçlarının yerel dosyaları
+.claude/

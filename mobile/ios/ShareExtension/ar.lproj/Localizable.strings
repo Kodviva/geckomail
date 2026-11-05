@@ -1,0 +1,12 @@
+/* OTOMATİK ÜRETİLDİ — mobile/scripts/gen-native-strings.mjs */
+"PUSH_FALLBACK" = "بريد جديد";
+"sync.notify.action.read" = "مقروء";
+"sync.notify.action.archive" = "أرشفة";
+"sync.notify.action.reply" = "رد";
+"mobile.channel.normal" = "البريد";
+"mobile.channel.urgent" = "بريد عاجل";
+"mobile.faceid.reason" = "تحقق من هويتك لفتح التطبيق";
+"mobile.push.relogin" = "يلزم تسجيل الدخول مرة أخرى. اضغط للفتح.";
+"mobile.lock.title" = "GeckoMail مقفل";
+"mobile.webview.update" = "يحتاج GeckoMail إلى إصدار حديث من Android System WebView. يُرجى تحديثه من متجر Play.";
+"mobile.share.openApp" = "افتح GeckoMail";

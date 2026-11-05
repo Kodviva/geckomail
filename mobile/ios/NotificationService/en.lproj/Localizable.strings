@@ -1,0 +1,12 @@
+/* OTOMATİK ÜRETİLDİ — mobile/scripts/gen-native-strings.mjs */
+"PUSH_FALLBACK" = "New mail";
+"sync.notify.action.read" = "Mark read";
+"sync.notify.action.archive" = "Archive";
+"sync.notify.action.reply" = "Reply";
+"mobile.channel.normal" = "Mail";
+"mobile.channel.urgent" = "Urgent mail";
+"mobile.faceid.reason" = "Verify your identity to unlock the app";
+"mobile.push.relogin" = "Sign in again. Tap to open.";
+"mobile.lock.title" = "GeckoMail is locked";
+"mobile.webview.update" = "GeckoMail needs an up-to-date Android System WebView. Please update it from the Play Store.";
+"mobile.share.openApp" = "Open GeckoMail";

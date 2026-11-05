@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- OTOMATİK ÜRETİLDİ — mobile/scripts/gen-native-strings.mjs -->
+<resources>
+    <string name="push_fallback">Nouveau message</string>
+    <string name="notify_action_read">Lu</string>
+    <string name="notify_action_archive">Archiver</string>
+    <string name="notify_action_reply">Répondre</string>
+    <string name="channel_normal">Courrier</string>
+    <string name="channel_urgent">Courrier urgent</string>
+    <string name="faceid_reason">Vérifiez votre identité pour déverrouiller l’app</string>
+    <string name="push_relogin">Reconnexion nécessaire. Touchez pour ouvrir.</string>
+    <string name="lock_title">GeckoMail est verrouillé</string>
+    <string name="webview_update">GeckoMail nécessite une version à jour d’Android System WebView. Mettez-la à jour depuis le Play Store.</string>
+</resources>

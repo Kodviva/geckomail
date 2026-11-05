@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- OTOMATİK ÜRETİLDİ — mobile/scripts/gen-native-strings.mjs -->
+<resources>
+    <string name="push_fallback">Yeni mail</string>
+    <string name="notify_action_read">Okundu</string>
+    <string name="notify_action_archive">Arşivle</string>
+    <string name="notify_action_reply">Yanıtla</string>
+    <string name="channel_normal">Posta</string>
+    <string name="channel_urgent">Acil posta</string>
+    <string name="faceid_reason">Uygulama kilidini açmak için kimliğinizi doğrulayın</string>
+    <string name="push_relogin">Yeniden giriş gerekli. Açmak için dokunun.</string>
+    <string name="lock_title">GeckoMail kilitli</string>
+    <string name="webview_update">GeckoMail için Android System WebView’in güncel olması gerekir. Lütfen Play Store’dan güncelleyin.</string>
+</resources>

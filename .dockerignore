@@ -1,0 +1,15 @@
+# Derleme bağlamına yalnız gerekenler girsin
+node_modules
+out
+release
+dist
+.git
+.github
+.env
+*.log
+.DS_Store
+build
+deploy
+mobile
+research
+docs

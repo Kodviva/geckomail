@@ -1,0 +1,181 @@
+{
+  "name": "geckomail",
+  "version": "2.0.0",
+  "description": "100+ hesap için donmayan mail istemcisi",
+  "main": "out/main/index.js",
+  "author": "Kodviva",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev -w",
+    "build": "electron-vite build",
+    "build:web": "vite build --config vite.web.config.ts",
+    "build:server": "npm run build:web && vite build --config vite.server.config.ts",
+    "build:relay": "vite build --config vite.relay.config.ts",
+    "build:mobile": "npm --prefix mobile run build",
+    "start:server": "node out/server/index.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint -c .oxlintrc.json src scripts e2e mobile/src mobile/scripts",
+    "i18n:index": "node scripts/i18n-index.mjs",
+    "test": "vitest run",
+    "test:e2e": "npm run build:server && vite build --config vite.e2e.config.ts && playwright test",
+    "postinstall": "electron-builder install-app-deps",
+    "dist": "electron-vite build && electron-builder --mac --publish never",
+    "dist:win": "electron-vite build && electron-builder --win --publish never -c.npmRebuild=false",
+    "release": "electron-vite build && electron-builder --mac --publish always",
+    "smoke": "electron-vite build && node scripts/smoke.mjs",
+    "smoke:upgrade": "electron-vite build && node scripts/smoke.mjs --upgrade",
+    "reset-password": "ELECTRON_RUN_AS_NODE=1 electron scripts/reset-password.mjs",
+    "reset-vault": "ELECTRON_RUN_AS_NODE=1 electron scripts/reset-vault.mjs",
+    "jmap-spike": "node scripts/jmap-spike.mjs",
+    "test:sieve-it": "node scripts/sieve-it.mjs"
+  },
+  "build": {
+    "appId": "com.kodviva.geckomail",
+    "productName": "GeckoMail",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**",
+      "!out/server/**",
+      "!out/relay/**",
+      "!out/web/**",
+      "!out/e2e-server/**"
+    ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**",
+      "out/main/**"
+    ],
+    "extraResources": [
+      { "from": "build/trayTemplate.png", "to": "trayTemplate.png" },
+      { "from": "build/trayTemplate@2x.png", "to": "trayTemplate@2x.png" },
+      { "from": "build/tray.ico", "to": "tray.ico" }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "hardenedRuntime": true,
+      "notarize": true,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "appx",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "files": [
+        "out/**",
+        "!out/server/**",
+        "!out/relay/**",
+        "!out/web/**",
+        "!out/e2e-server/**",
+        "!**/better-sqlite3/prebuilds/{darwin,linux,linuxmusl}-*"
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false
+    },
+    "appx": {
+      "identityName": "GeckoMail.Placeholder",
+      "publisher": "CN=00000000-0000-0000-0000-000000000000",
+      "publisherDisplayName": "GeckoMail",
+      "applicationId": "GeckoMail",
+      "addAutoLaunchExtension": false,
+      "customExtensionsPath": "build/appx-extensions.xml"
+    },
+    "toolsets": {
+      "winCodeSign": "1.1.0"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "kodviva",
+      "repo": "geckomail-releases",
+      "releaseType": "release"
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "loadBrowserProcessSpecificV8Snapshot": false
+    }
+  },
+  "dependencies": {
+    "@simplewebauthn/browser": "^14.0.0",
+    "@tanstack/react-virtual": "^3.14.13",
+    "@xmldom/xmldom": "0.9.12",
+    "asn1js": "4.0.0",
+    "better-sqlite3": "^13.0.3",
+    "dompurify": "^3.4.17",
+    "electron-updater": "^6.8.9",
+    "ical.js": "2.2.1",
+    "imapflow": "^2.1.2",
+    "nodemailer": "^10.3.1",
+    "papaparse": "^5.7.0",
+    "pkijs": "4.0.1",
+    "plist": "^5.0.0",
+    "postal-mime": "^4.2.0",
+    "qrcode-generator": "^2.0.4",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "ws": "^8.22.1",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@simplewebauthn/server": "^14.0.3",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/nodemailer": "^8.0.2",
+    "@types/papaparse": "^5.5.2",
+    "@types/plist": "^3.0.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.2",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^44.5.0",
+    "electron-builder": "26.15.3",
+    "electron-vite": "^5.0.0",
+    "fake-indexeddb": "^6.2.7",
+    "oxlint": "^1.86.0",
+    "typescript": "^7.0.2",
+    "vite": "^7.3.6",
+    "vitest": "^5.0.2"
+  },
+  "overrides": {
+    "@xmldom/xmldom@>=0.9.0": "0.9.12",
+    "@xmldom/xmldom@<0.9.0": "^0.8.15",
+    "ip-address": "^10.7.4",
+    "js-yaml@>=4.0.0": "^4.3.2"
+  }
+}
