@@ -1,6 +1,6 @@
 {
   "name": "geckomail-mobile",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "private": true,
   "description": "GeckoMail iOS ve Android kabuğu (Capacitor); arayüz src/renderer'dan gelir",
   "type": "module",

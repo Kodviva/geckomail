@@ -7,7 +7,7 @@
 # Bir sağlayıcının değişkenleri ve sırrı verilmezse süreç yine açılır, o platforma her gönderim 'retry' döner.
 services:
   relay:
-    image: ghcr.io/kodviva/geckomail-relay:v2.0.0
+    image: ghcr.io/kodviva/geckomail-relay:v2.0.1
     restart: unless-stopped
     ports:
       - "127.0.0.1:8090:8090" # yalnız ters vekil erişsin

@@ -10,7 +10,7 @@
 # anahtarı veriden ayrı yedekleyin.
 services:
   geckomail:
-    image: ghcr.io/kodviva/geckomail-server:v2.0.0
+    image: ghcr.io/kodviva/geckomail-server:v2.0.1
     # Ayarlar › Yedekleme'deki "Şimdi yeniden başlat" sunucuyu düzgünce kapatır (çıkış kodu 0); yeniden açan bu
     # ilkedir (on-failure yetmez). Açılışta bekleyen geri yükleme uygulanır, önceki veritabanı
     # /data/geckomail.db.bak-<zaman> olarak kalır. Uygulanamazsa mevcut DB korunur ve süreç 3 ile çıkar:

@@ -1,6 +1,6 @@
 {
   "name": "geckomail",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "100+ hesap için donmayan mail istemcisi",
   "main": "out/main/index.js",
   "author": "Kodviva",
