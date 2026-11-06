@@ -116,7 +116,7 @@ export function messagesQueries(c: QCtx) {
     listMessages(p: ListParams): MessageRow[] {
       const where: string[] = ['hidden = 0', 'snooze_until = 0']
       const args: unknown[] = []
-      if (p.folderId) {
+      if (p.folderId != null) {
         where.push('folder_id = ?')
         args.push(p.folderId)
       } else {
@@ -196,7 +196,7 @@ export function messagesQueries(c: QCtx) {
     listThreads(p: ListParams): (MessageRow & { threadCount: number; threadUnread: number })[] {
       const where: string[] = []
       const args: unknown[] = []
-      if (p.folderId) {
+      if (p.folderId != null) {
         where.push('folder_id = ?')
         args.push(p.folderId)
       } else {
@@ -376,6 +376,7 @@ export function messagesQueries(c: QCtx) {
 
     // Duvar panosu sparkline'ı için saat-bazlı sayım — boşluk doldurma shared/volume.ts'de (saf, test edilebilir)
     getHourlyMessageCounts(sinceTs: number, accountIds: number[] | null): { hour: number; count: number }[] {
+      if (accountIds && !accountIds.length) return []
       let sql = `SELECT (date / 3600000) * 3600000 AS hour, COUNT(*) AS n FROM messages WHERE folder_kind = 'inbox' AND hidden = 0 AND date > ?`
       const args: unknown[] = [sinceTs]
       if (accountIds && accountIds.length) {

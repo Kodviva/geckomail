@@ -298,7 +298,7 @@ async function serve(io: CliIo, cfg: ServerConfig, opts: CliOptions = {}): Promi
   const host = createServerHost(key, () => engine?.hub ?? null, () => (fatal = true))
   try {
     engine = startEngine({
-      userData: cfg.dataDir, host, mode: 'server', idleMax: cfg.idleMax, davPrivateHosts: cfg.davPrivateHosts,
+      userData: cfg.dataDir, host, mode: 'server', idleMax: cfg.idleMax, davPrivateHosts: cfg.davPrivateHosts, mailPrivateHosts: cfg.mailPrivateHosts,
       notifySink: (q, hub) => {
         if (cfg.relayUrl && cfg.mobileEnabled !== false) relay = new RelayClient({ url: cfg.relayUrl, keys: relayKeyLoader(q, host) })
         return (push = serverPushSink({ q, host, hub, publicOrigin: cfg.publicOrigin, extraHosts: opts.pushHosts, relay }))

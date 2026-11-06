@@ -30,6 +30,7 @@ services:
       # Anlık (IMAP IDLE) algılanan hesap sayısı üst sınırı; kalanı 120 sn aralıkla yoklanır
       # GECKO_IDLE_MAX: "40"
       # GECKO_DAV_PRIVATE_HOSTS: "dav.ic.example.com:5232"  # iç ağdaki CalDAV/CardDAV sunucuları, virgüllü; portsuz ad 80, 443, 8443 demek
+      # GECKO_MAIL_PRIVATE_HOSTS: "posta.ic.example.com"  # iç ağdaki IMAP/SMTP sunucuları, virgüllü; ad ya da ad:port
       # Mobil uygulama yolu varsayılan açık; "0" Bearer, CORS ve WebSocket biletini tümüyle kapatır
       # GECKO_MOBILE: "0"
       # Mobil bildirim rölesi; "off" APNs/FCM iletimini kapatır, kendi röleniz için https kökeni yazın

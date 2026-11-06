@@ -12,6 +12,8 @@ import { type Handler, READABLE_PREFS, removeAccountOutbox } from './common'
 import { t } from '../../shared/i18n'
 
 const SIEVE_ROLLBACK_MS = 10_000
+// saklı parolanın ve giden postanın hangi sunucuya gideceğini belirleyen sütunlar
+const CONNECTION_COLUMNS = ['imap_host', 'imap_port', 'imap_tls', 'smtp_host', 'smtp_port', 'smtp_tls', 'allow_invalid_certs'] as const
 const TICKET_REFUSED_PATCH = ['imapHost', 'imapPort', 'imapTls', 'smtpHost', 'smtpPort', 'smtpTls', 'allowInvalidCerts', 'password'] as const
 
 async function settleWithin(work: Promise<unknown>, ms: number): Promise<void> {
@@ -191,6 +193,9 @@ export const accountsHandlers: Record<string, Handler> = {
     if (patch.smtpPort !== undefined) fields.smtp_port = port(patch.smtpPort, 'SMTP')
     if (patch.smtpTls !== undefined) fields.smtp_tls = tls(patch.smtpTls, 'SMTP')
     if ('allowInvalidCerts' in patch) fields.allow_invalid_certs = patch.allowInvalidCerts ? 1 : 0
+    // Bağlantı yalnız yönetici değiştirir. Üye değişmemiş değeri gönderebilir (form tümünü yollar). Yeni parolayla birlikte de
+    // açılmaz: gönderilen postalar yeni sunucudan geçer. Parola tek başına üyeye açık kalır, sunucu taşınması yöneticinin işidir
+    if (s.currentUser?.role !== 'admin' && CONNECTION_COLUMNS.some((k) => k in fields && fields[k] !== row[k])) throw new Error(t('sync.perm.adminRequired'))
     if (patch.password) {
       if (row.secure) {
         // kasa hesabı: şifre kasa anahtarıyla saklanır (safeStorage ile değil) — yoksa kasa

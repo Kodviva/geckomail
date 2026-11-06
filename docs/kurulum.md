@@ -35,6 +35,7 @@ Vekil sayısını `GECKO_TRUSTED_PROXY_DEPTH` ile bildirin: yanlış değer giri
 | `GECKO_TRUSTED_PROXY_DEPTH` | `0` | Önünüzdeki ters vekil sayısı |
 | `GECKO_IDLE_MAX` | `40` | IMAP IDLE ile anlık izlenen hesap üst sınırı, kalanı 120 sn yoklanır |
 | `GECKO_DAV_PRIVATE_HOSTS` | boş | İç ağdaki DAV sunucuları, `ad:port` virgüllü |
+| `GECKO_MAIL_PRIVATE_HOSTS` | boş | İç ağdaki IMAP ve SMTP sunucuları, `ad` ya da `ad:port` virgüllü. Listede olmayan iç adrese bağlanılmaz |
 | `GECKO_MOBILE` | `1` | `0` mobil yolu tümüyle kapatır |
 | `GECKO_RELAY_URL` | `https://relay.kodviva.com` | Mobil bildirim rölesi, `off` kapatır |
 | `GECKO_WEB_DIR` | imaj içi | Web istemcisi dosyaları |

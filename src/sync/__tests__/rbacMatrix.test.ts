@@ -100,6 +100,84 @@ describe('RBAC matrisi', () => {
     expect(ids(await srv.handle('listSmart', { view: 'starred', accountIds: [accB] }))).toEqual([])
   })
 
+  it('üye: klasör süzgeci geçersiz kimlikle atlanamaz', async () => {
+    srv.currentUser = member()
+    const list = { accountIds: null, folderKind: 'inbox', cursor: null, limit: 50, unreadOnly: false }
+    for (const m of ['listMessages', 'listThreads']) {
+      for (const folderId of [0, -1, 1.5, '1', true]) await expect(srv.handle(m, { ...list, folderId }), `${m} ${folderId}`).rejects.toThrow('folderId')
+      expect(await srv.handle(m, { ...list, folderId: 999_999 }), m).toEqual([])
+      const hidden = q.getFolders(accB)[0].id
+      await expect(srv.handle(m, { ...list, folderId: hidden }), m).rejects.toThrow('yetkiniz yok')
+      const mine = q.getFolders(accA)[0].id
+      expect(((await srv.handle(m, { ...list, folderId: mine })) as { id: number }[]).map((r) => r.id), m).toEqual([msgA])
+    }
+  })
+
+  it('sorgu katmanı folderId 0 için tüm posta kutusuna düşmez', () => {
+    const base = { accountIds: null, folderKind: 'inbox', cursor: null, limit: 50, unreadOnly: false, folderId: 0 } as Parameters<typeof q.listMessages>[0]
+    expect(q.listMessages(base)).toEqual([])
+    expect(q.listThreads(base)).toEqual([])
+  })
+
+  it('görebildiği hesap olmayan üye boş saatlik seri alır', async () => {
+    db.prepare('UPDATE messages SET date = ?').run(Date.now() - 3600_000)
+    srv.currentUser = { ...member(), permittedGroupIds: [], manageableGroupIds: [] }
+    const series = (await srv.handle('getHourlyVolume', {})) as number[] | { count: number }[]
+    expect(series.length).toBeGreaterThan(0)
+    expect(series.every((v) => (typeof v === 'number' ? v : v.count) === 0)).toBe(true)
+    expect(q.getHourlyMessageCounts(0, [])).toEqual([])
+    expect(q.getHourlyMessageCounts(0, null).length).toBeGreaterThan(0)
+  })
+
+  describe('üye oturumu: hesap bağlantı alanları', () => {
+    const update = (patch: Record<string, unknown>) => srv.handle('updateAccount', { accountId: accA, patch })
+    const admin = (): SessionUser => ({ id: 1, username: 'admin', role: 'admin', permittedGroupIds: [], manageableGroupIds: [] })
+    const connection = () => {
+      const r = q.getAccountRow(accA)!
+      return [r.imap_host, r.imap_port, r.imap_tls, r.smtp_host, r.smtp_port, r.smtp_tls, r.allow_invalid_certs]
+    }
+
+    it('yönetme izni olan üye bağlantı alanını değiştiremez', async () => {
+      srv.currentUser = member()
+      const before = connection()
+      for (const patch of [
+        { imapHost: 'kotu.example.com' }, { imapPort: 143 }, { imapTls: 'starttls' }, { smtpHost: 'kotu.example.com' },
+        { smtpPort: 587 }, { smtpTls: 'starttls' }, { allowInvalidCerts: true }
+      ]) await expect(update(patch), JSON.stringify(patch)).rejects.toThrow('yönetici yetkisi')
+      expect(connection()).toEqual(before)
+    })
+
+    it('yeni parolayla birlikte sunucu değişimi de reddedilir, parola yazılmaz', async () => {
+      srv.currentUser = member()
+      const creds = (srv as unknown as { deps: { creds: Map<number, string> } }).deps.creds
+      const enc = q.getAccountRow(accA)!.password_enc
+      await expect(update({ imapHost: 'yeni.example.com', password: 'yeni' })).rejects.toThrow('yönetici yetkisi')
+      expect(creds.has(accA)).toBe(false)
+      expect(q.getAccountRow(accA)!.password_enc).toEqual(enc)
+    })
+
+    it('kurtarma: parola tek başına ve değişmeyen alanlar üyeye açık', async () => {
+      srv.currentUser = member()
+      const before = connection()
+      await update({ imapHost: 'M.T.CO', imapPort: 993, password: 'yeni', displayName: 'Ops' })
+      const row = q.getAccountRow(accA)!
+      expect(row.display_name).toBe('Ops')
+      expect(Buffer.from(row.password_enc!).toString()).toBe('yeni')
+      expect(connection()).toEqual(before)
+    })
+
+    it('izinsiz hesapta üye yine yönetim hatası alır', async () => {
+      srv.currentUser = member()
+      await expect(srv.handle('updateAccount', { accountId: accB, patch: { imapHost: 'x.example.com' } })).rejects.toThrow('yönetim yetkiniz yok')
+    })
+
+    it('yönetici bağlantıyı değiştirir', async () => {
+      srv.currentUser = admin()
+      await update({ imapHost: 'yeni.example.com', allowInvalidCerts: true, password: 'p' })
+      expect(q.getAccountRow(accA)).toMatchObject({ imap_host: 'yeni.example.com', allow_invalid_certs: 1 })
+    })
+  })
+
   it('üye: izinsiz hesabın mesajına/hesabına dokunamaz', async () => {
     srv.currentUser = member()
     await expect(srv.handle('getBody', { messageId: msgB })).rejects.toThrow('yetkiniz yok')

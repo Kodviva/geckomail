@@ -19,6 +19,8 @@ export interface ServerConfig {
   idleMax?: number
   /** İç ağdaki DAV sunucuları (GECKO_DAV_PRIVATE_HOSTS): `ad:port`, çıplak ad 80, 443, 8443 demek; SSRF engeli yalnız bunlar için kalkar */
   davPrivateHosts?: string[]
+  /** İç ağdaki IMAP/SMTP sunucuları (GECKO_MAIL_PRIVATE_HOSTS): `ad` ya da `ad:port`; bağlantı süzgeci yalnız bunlar için kalkar */
+  mailPrivateHosts?: string[]
   /** Mobil uygulama yolu (Bearer, CORS, WS bileti); GECKO_MOBILE=0 kapatır. Verilmezse açık */
   mobileEnabled?: boolean
   /** geckomail-relay kökeni (APNs/FCM iletimi); GECKO_RELAY_URL=off ise null. Verilmezse DEFAULT_RELAY */
@@ -69,11 +71,16 @@ export function configFromEnv(env: NodeJS.ProcessEnv): ServerConfig {
   const idleRaw = env.GECKO_IDLE_MAX ?? '40'
   if (!/^\d{1,4}$/.test(idleRaw) || Number(idleRaw) < 1) throw invalid('GECKO_IDLE_MAX')
 
-  const davPrivateHosts = (env.GECKO_DAV_PRIVATE_HOSTS ?? '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean)
-  for (const h of davPrivateHosts) {
-    const m = /^[a-z0-9][a-z0-9.-]*(?::(\d{1,5}))?$/.exec(h)
-    if (!m || (m[1] && !(Number(m[1]) >= 1 && Number(m[1]) <= 65535))) throw invalid('GECKO_DAV_PRIVATE_HOSTS')
+  const hostList = (name: 'GECKO_DAV_PRIVATE_HOSTS' | 'GECKO_MAIL_PRIVATE_HOSTS'): string[] => {
+    const list = (env[name] ?? '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean)
+    for (const h of list) {
+      const m = /^[a-z0-9][a-z0-9.-]*(?::(\d{1,5}))?$/.exec(h)
+      if (!m || (m[1] && !(Number(m[1]) >= 1 && Number(m[1]) <= 65535))) throw invalid(name)
+    }
+    return list
   }
+  const davPrivateHosts = hostList('GECKO_DAV_PRIVATE_HOSTS')
+  const mailPrivateHosts = hostList('GECKO_MAIL_PRIVATE_HOSTS')
 
   const mobileRaw = env.GECKO_MOBILE ?? '1'
   if (!/^[01]$/.test(mobileRaw)) throw invalid('GECKO_MOBILE')
@@ -100,6 +107,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv): ServerConfig {
     trustedProxyDepth: Number(depthRaw),
     idleMax: Number(idleRaw),
     davPrivateHosts,
+    mailPrivateHosts,
     mobileEnabled: mobileRaw === '1',
     relayUrl,
     // paketli sunucu out/server/index.mjs (imajda /app/server) → web dosyaları yanındaki ../web

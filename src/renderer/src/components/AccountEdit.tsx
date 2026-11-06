@@ -404,10 +404,12 @@ export default function AccountEdit() {
           </>
         )}
 
-        <button type="button" className="link-btn" onClick={() => void toggleServer()}>
-          <svg className={`icon sm chev ${serverOpen ? 'open' : ''}`}><use href="#i-chevron" /></svg>
-          {t('acct.edit.serverToggle')}
-        </button>
+        {isAdmin && (
+          <button type="button" className="link-btn" onClick={() => void toggleServer()}>
+            <svg className={`icon sm chev ${serverOpen ? 'open' : ''}`}><use href="#i-chevron" /></svg>
+            {t('acct.edit.serverToggle')}
+          </button>
+        )}
         {serverOpen && server && (
           <div className="server-section">
             <div className="cc-row">

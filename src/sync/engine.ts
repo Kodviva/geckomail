@@ -9,6 +9,7 @@ import { DbTooNewError, openDb } from './db'
 import { makeQueries, type Queries } from './db/queries'
 import { Scheduler } from './scheduler'
 import { OpQueue } from './opQueue'
+import { setMailNetPolicy } from './net/mailNet'
 import { pimNetPolicy } from './pim/davClient'
 import { deliverDueReminders } from './pim/reminders'
 import { RpcHub } from './rpcHub'
@@ -34,6 +35,8 @@ export type EngineOptions = {
   idleMax?: number
   /** sunucu: iç ağdaki DAV sunucuları (GECKO_DAV_PRIVATE_HOSTS) */
   davPrivateHosts?: string[]
+  /** sunucu: iç ağdaki IMAP/SMTP sunucuları (GECKO_MAIL_PRIVATE_HOSTS) */
+  mailPrivateHosts?: string[]
 } & (
   /** os: safeStorage arızasının anlamı işletim sistemine bağlı (loadCredentials); yoksa macOS davranışı */
   | { mode: 'desktop'; os?: NodeJS.Platform }
@@ -44,6 +47,7 @@ export interface Engine { hub: RpcHub; signal(s: HostSignal): void; stop(): Prom
 
 export function startEngine(opts: EngineOptions): Engine {
   const { userData, host } = opts
+  setMailNetPolicy(opts.mode === 'server' ? new Set(opts.mailPrivateHosts ?? []) : null)
   let db: ReturnType<typeof openDb>
   try {
     db = openDb(userData)

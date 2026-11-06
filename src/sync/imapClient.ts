@@ -1,6 +1,7 @@
 import { credentialFor, type Credential } from './oauth'
 import { ImapFlow } from 'imapflow'
 import type { AccountRow } from './db/queries'
+import { mailEndpoint } from './net/mailNet'
 
 // preauth: login tamamlanmadan ağ hatası (TCP/TLS reset, eof, greeting yok) — IP engelinin imzası
 export type ErrClass = 'auth' | 'limit' | 'preauth' | 'net' | 'other'
@@ -63,8 +64,16 @@ export async function openConnection(account: AccountRow, secret: string, opts: 
     if (e && typeof e === 'object') (e as { phase?: string }).phase = 'token'
     throw e
   }
+  let endpoint: Awaited<ReturnType<typeof mailEndpoint>>
+  try {
+    endpoint = await mailEndpoint(account.imap_host, account.imap_port)
+  } catch (e) {
+    if (e && typeof e === 'object') (e as { phase?: string }).phase = 'connect'
+    throw e
+  }
   const client = new ImapFlow({
-    host: account.imap_host,
+    host: endpoint.host,
+    ...(endpoint.servername ? { servername: endpoint.servername } : {}),
     port: account.imap_port,
     secure: account.imap_tls !== 'starttls',
     auth: cred.kind === 'oauth' ? { user: account.email, accessToken: cred.accessToken } : { user: account.email, pass: cred.password },

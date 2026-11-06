@@ -2,6 +2,7 @@ import { credentialFor, xoauth2 } from './oauth'
 import { randomUUID } from 'crypto'
 import MailComposer from 'nodemailer/lib/mail-composer'
 import SMTPConnection from 'nodemailer/lib/smtp-connection'
+import { mailEndpoint } from './net/mailNet'
 import type { DraftOut } from '../shared/rpc'
 import type { AccountRow } from './db/queries'
 import { t } from '../shared/i18n'
@@ -132,8 +133,12 @@ function tag(err: unknown, phase: SmtpPhase): Error {
 export async function smtpSendRaw(account: AccountRow, secret: string, draft: DraftOut, raw: Buffer, envelopeTo?: string[]): Promise<void> {
   const cred = await credentialFor(account, secret)
   const secure = account.smtp_tls !== 'starttls'
+  const endpoint = await mailEndpoint(account.smtp_host, account.smtp_port).catch((e) => {
+    throw tag(e, 'connect')
+  })
   const conn = new SMTPConnection({
-    host: account.smtp_host,
+    host: endpoint.host,
+    ...(endpoint.servername ? { servername: endpoint.servername } : {}),
     port: account.smtp_port,
     secure,
     // STARTTLS hesabında sunucu TLS'i reddederse şifreyi düz metin gönderme (indirgeme saldırısı)

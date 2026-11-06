@@ -52,6 +52,15 @@ export async function attachmentOnDisk(deps: RpcServerDeps, msg: MessageOf, att:
   return stored.endsWith(SEALED_ATTACHMENT_SUFFIX) ? openSealedAttachment(stored, deps.attachDir, att) : stored
 }
 
+/** Klasör süzgeci: geçersiz kimlik reddedilir (0 sorguda süzgeçsiz sayılırdı), olmayan klasör boş sonuç, var olan için görme yetkisi */
+function folderInScope(s: RpcSession, folderId: unknown): boolean {
+  if (typeof folderId !== 'number' || !Number.isInteger(folderId) || folderId <= 0) throw new Error(t('sync.pref.invalidValue', { key: 'folderId' }))
+  const f = s.deps.q.getFolderById(folderId)
+  if (!f) return false
+  s.assertCanView(f.account_id)
+  return true
+}
+
 const smimeState = (o: Partial<SmimeInfo>): SmimeInfo => ({ sig: 'none', enc: 'none', notes: [], signer: null, canSaveCert: false, ...o })
 
 const noContent = (smime: SmimeInfo): BodyResult => ({ state: 'ready', textPlain: null, html: null, attachments: [], smime })
@@ -156,7 +165,8 @@ export const mailHandlers: Record<string, Handler> = {
     const { q } = s.deps
     const ids = s.resolveAccountIds(null)
     const since = Date.now() - 24 * 3600_000
-    const rows = q.getHourlyMessageCounts(since, ids)
+    // boş liste "tümü" demek değil: görebildiği hesabı olmayan üye sıfır serisi alır
+    const rows = ids !== null && ids.length === 0 ? [] : q.getHourlyMessageCounts(since, ids)
     return buildHourlySeries(rows, since, Date.now())
   },
 
@@ -164,8 +174,7 @@ export const mailHandlers: Record<string, Handler> = {
     const { q } = s.deps
     const p = params as ListParams
     if (p.folderId != null) {
-      const f = q.getFolderById(p.folderId)
-      if (f) s.assertCanView(f.account_id)
+      if (!folderInScope(s, p.folderId)) return []
       return q.listMessages(p)
     }
     const ids = s.resolveAccountIds(p.accountIds)
@@ -177,8 +186,7 @@ export const mailHandlers: Record<string, Handler> = {
     const { q } = s.deps
     const p = params as ListParams
     if (p.folderId != null) {
-      const f = q.getFolderById(p.folderId)
-      if (f) s.assertCanView(f.account_id)
+      if (!folderInScope(s, p.folderId)) return []
       return q.listThreads(p)
     }
     const ids = s.resolveAccountIds(p.accountIds)
