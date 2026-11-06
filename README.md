@@ -12,7 +12,7 @@ Ekran görüntüleri demo verisiyle üretilmiştir.
 
 ## Hızlı kurulum
 
-Masaüstü: [sürümler](https://github.com/kodviva/geckomail-releases/releases) sayfasından indirin, hesap ekleyin.
+Masaüstü: hazır 2.0 paketleri henüz yayımlanmadı. Durumu [ürün sayfasından](https://kodviva.com/geckomail/) izleyin.
 
 Sunucu:
 
