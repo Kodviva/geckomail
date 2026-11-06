@@ -6,9 +6,9 @@ Sunucu tek Docker kapsayıcısıdır. Web istemcisi, masaüstü sunucu modu ve m
 
 1. `deploy/docker-compose.example.yml` dosyasını kopyalayın.
 2. `GECKO_PUBLIC_ORIGIN` değerini kendi adresinizle değiştirin.
-3. Ana anahtarı üretin ve veriden ayrı yedekleyin: `openssl rand -base64 32 > geckomail_key`. Bu dosya olmadan yedek açılmaz.
+3. Ana anahtarı üretin ve veriden ayrı yedekleyin: `head -c 32 /dev/urandom > geckomail_key`, sonra `sudo chown 10001:10001 geckomail_key && sudo chmod 0400 geckomail_key`. Bu dosya olmadan yedek açılmaz.
 4. `docker compose up -d`
-5. Tarayıcıda adresi açın, ilk yöneticiyi oluşturun. Ayarlardan kasayı kurun.
+5. İlk yöneticiyi oluşturun: `docker compose exec geckomail node /app/server/index.mjs create-admin yonetici`. Sonra tarayıcıda adresi açın, ayarlardan kasayı kurun.
 
 İmaj `ghcr.io/kodviva/geckomail-server`. Sürüm etiketi kullanın, `latest` yoktur.
 

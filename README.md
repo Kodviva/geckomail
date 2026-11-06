@@ -19,9 +19,11 @@ Sunucu:
 ```bash
 curl -O https://raw.githubusercontent.com/kodviva/geckomail/main/deploy/docker-compose.example.yml
 mv docker-compose.example.yml docker-compose.yml
-openssl rand -base64 32 > geckomail_key   # veriden ayrı yedekleyin
+head -c 32 /dev/urandom > geckomail_key   # veriden ayrı yedekleyin
+sudo chown 10001:10001 geckomail_key && sudo chmod 0400 geckomail_key
 # GECKO_PUBLIC_ORIGIN değerini düzenleyin, önüne TLS sonlandıran ters vekil koyun
 docker compose up -d
+docker compose exec geckomail node /app/server/index.mjs create-admin yonetici
 ```
 
 Ayrıntı: [`docs/kurulum.md`](docs/kurulum.md).
