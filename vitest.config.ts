@@ -8,6 +8,6 @@ export default defineConfig({
   test: {
     exclude: [...configDefaults.exclude, 'e2e/**', ...yalnizPosix],
     setupFiles: ['src/test/windowsTemizlik.ts'],
-    testTimeout: process.platform === 'win32' ? 30_000 : 5_000 // gerçek göç zinciri Windows CI'da yavaş
+    testTimeout: process.platform === 'win32' ? 90_000 : 5_000 // gerçek göç zinciri Windows CI'da yavaş
   }
 })
