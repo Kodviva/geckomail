@@ -117,7 +117,7 @@ export interface PushSinkOptions {
   /** yalnız testler: createHttpServer'ın pushHosts seçeneğiyle aynı */
   extraHosts?: string[]
   /** null: röle kapalı (GECKO_RELAY_URL=off), yerel cihazlara gönderilmez ama satırları kalır */
-  relay?: Pick<RelayClient, 'push'> | null
+  relay?: (Pick<RelayClient, 'push'> & Partial<Pick<RelayClient, 'unregister'>>) | null
 }
 
 /** Bildirim hattının sunucu alıcısı */
@@ -191,6 +191,7 @@ export class PushSink implements NotifySink {
       const s = d.web_session_id ? q.getWebSession(d.web_session_id) : undefined
       if (s && sessionPushLive(s, now)) return true
       q.deletePushDevice(d.id, d.endpoint)
+      if (isRelayDevice(d)) void this.o.relay?.unregister?.(relayDeviceId(d.endpoint)).catch(() => {})
       return false
     })
   }
@@ -298,7 +299,7 @@ export class PushSink implements NotifySink {
  *  push yükü `payload` içinde kasa için soyulur. extraHosts yalnız testler (createHttpServer pushHosts) */
 export function serverPushSink(o: {
   q: Queries; host: Pick<EngineHost, 'encrypt' | 'decrypt'>; hub: Pick<RpcHub, 'notifyUser'>; publicOrigin: string; extraHosts?: string[]
-  relay?: Pick<RelayClient, 'push'> | null
+  relay?: PushSinkOptions['relay']
 }): PushSink {
   return new PushSink({
     q: o.q, keys: vapidLoader(o.q, o.host), subject: pushSubject(o.publicOrigin), extraHosts: o.extraHosts, relay: o.relay,

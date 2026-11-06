@@ -566,7 +566,8 @@ export function createHttpServer(o: {
             auth.endSession(device.web_session_id)
             closeWebSessions(new Set([device.web_session_id]))
           }
-          if (remotePhone) void o.relay?.unregister(relayDeviceId(device.endpoint)).catch(() => {})
+          // satır gittiyse röle kaydı da gider: kapatılan telefon jetonu rölede kalmaz
+          if (isRelayDevice(device)) void o.relay?.unregister(relayDeviceId(device.endpoint)).catch(() => {})
           return send(res, 204, undefined, true)
         }
       }

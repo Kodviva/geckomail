@@ -129,4 +129,25 @@ describe('FCM', () => {
   it('servis hesabı biçim hatası içerik göstermez', () => {
     expect(() => parseServiceAccount(JSON.stringify({ project_id: '../x', client_email: 'a', private_key: pem }))).toThrow('gecko.relay.fcm.account')
   })
+
+  it('ret günlüğü durum ve neden taşır, belirteç taşımaz', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    reply = { status: 404, body: JSON.stringify({ error: { status: 'NOT_FOUND', details: [{ errorCode: 'UNREGISTERED' }], message: token } }) }
+    expect(await sender()(device, 'x')).toBe('gone')
+    reply = { status: 503, body: 'kapalı' }
+    expect(await sender()(device, 'x')).toBe('retry')
+    expect(log.mock.calls.map((c) => c[0])).toEqual([
+      'relay: fcm teslim etmedi (http 404, UNREGISTERED)',
+      'relay: fcm teslim etmedi (http 503, neden yok)'
+    ])
+    log.mockRestore()
+  })
+
+  it('ağ hatası ve zaman aşımı adres yazmadan günlüğe düşer', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const dead = createFcm({ account, now: () => t, bases: { fcm: 'http://127.0.0.1:1', oauth: 'http://127.0.0.1:1' } })
+    expect(await dead(device, 'x')).toBe('retry')
+    expect(log.mock.calls[0][0]).toBe('relay: fcm teslim etmedi (http 0, TypeError)')
+    log.mockRestore()
+  })
 })

@@ -366,6 +366,16 @@ describe('motordan röleye teslim', () => {
     expect(q.listPushDevices(uid)).toHaveLength(1)
   })
 
+  it('oturumu bitmiş telefonun satırı silinince röle kaydı da gider', async () => {
+    await start()
+    const { uid, session } = await enrolled()
+    const unregister = vi.spyOn(client, 'unregister').mockResolvedValue()
+    q.deleteWebSession(session.id)
+    startSink().deliver(uid, [item()])
+    expect(q.listPushDevices(uid)).toHaveLength(0)
+    expect(unregister).toHaveBeenCalledTimes(1)
+  })
+
   it('member cannot delete other device', async () => {
     await start()
     const { uid, id } = await enrolled()
@@ -400,7 +410,16 @@ describe('motordan röleye teslim', () => {
     expect((await req('DELETE', `/api/push/devices/${id}`, { headers: bearer(session.access) })).status).toBe(204)
     expect(q.getWebSession(session.id)).toBeDefined()
     expect(q.listPushDevices(uid)).toHaveLength(0)
-    expect(unregister).not.toHaveBeenCalled()
+    expect(unregister).toHaveBeenCalledTimes(1)
+  })
+
+  it('röleye ulaşılamasa da telefon bildirimi kapatır', async () => {
+    await start()
+    const { uid, id, session } = await enrolled()
+    vi.spyOn(client, 'unregister').mockRejectedValue(new Error('ağ'))
+    expect((await req('DELETE', `/api/push/devices/${id}`, { headers: bearer(session.access) })).status).toBe(204)
+    expect(q.listPushDevices(uid)).toHaveLength(0)
+    expect(q.getWebSession(session.id)).toBeDefined()
   })
 
   describe('Oturumlarım', () => {

@@ -2,6 +2,7 @@
 // veri mesajı: notification alanı yok, içerik cihazda çözülür. Adresler sabittir; servis hesabı dosyasındaki token_uri kullanılmaz.
 import { createPrivateKey, sign, type KeyObject } from 'crypto'
 import { validDeviceToken, type RelayResult } from '../shared/relayProtocol'
+import { logDeliveryFailure } from './providerLog'
 import type { RelayDevice } from './store'
 
 export const FCM_BASE = 'https://fcm.googleapis.com'
@@ -48,6 +49,17 @@ function invalidToken(text: string): boolean {
   }
 }
 
+/** Hata gövdesinin kodu: ayrıntıdaki errorCode (UNREGISTERED gibi), yoksa genel durum */
+function fcmReason(text: string): string {
+  try {
+    const { error } = JSON.parse(text) as { error?: { status?: unknown; details?: { errorCode?: unknown }[] } }
+    const code = error?.details?.find((d) => typeof d.errorCode === 'string')?.errorCode
+    return String(code ?? error?.status ?? '')
+  } catch {
+    return ''
+  }
+}
+
 export function createFcm(o: FcmOptions): (d: RelayDevice, c: string) => Promise<RelayResult> {
   const now = o.now ?? Date.now
   const doFetch = o.fetch ?? fetch
@@ -70,7 +82,10 @@ export function createFcm(o: FcmOptions): (d: RelayDevice, c: string) => Promise
       redirect: 'error',
       signal: AbortSignal.timeout(REQUEST_MS)
     })
-    if (!r.ok) return null
+    if (!r.ok) {
+      logDeliveryFailure('fcm-oauth', r.status, '')
+      return null
+    }
     const { access_token: value } = (await r.json()) as { access_token?: unknown }
     if (typeof value !== 'string') return null
     cached = { value, at: now() }
@@ -91,10 +106,13 @@ export function createFcm(o: FcmOptions): (d: RelayDevice, c: string) => Promise
       })
       if (r.ok) return 'ok'
       if (r.status === 401) cached = null
-      if (r.status === 404 && (await r.text()).includes('UNREGISTERED')) return 'gone'
-      if (r.status === 400 && invalidToken(await r.text())) return 'gone'
+      const text = await r.text()
+      logDeliveryFailure('fcm', r.status, fcmReason(text))
+      if (r.status === 404 && text.includes('UNREGISTERED')) return 'gone'
+      if (r.status === 400 && invalidToken(text)) return 'gone'
       return 'retry'
-    } catch {
+    } catch (e) {
+      logDeliveryFailure('fcm', 0, (e as Error).name) // ileti adres içerebilir
       return 'retry'
     }
   }

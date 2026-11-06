@@ -1,5 +1,5 @@
-// geckomail-relay HTTP katmanı. Tüm uçlar imzalıdır; imzasız yalnız /healthz. Metrik ve durum sayfası yok. Günlüğe istek başına
-// satır, IP, belirteç, cihaz kimliği yazılmaz. İstekten yalnız doğrulanmış belirteç ve opak kutu alınır, adres hiçbir zaman.
+// geckomail-relay HTTP katmanı. Tüm uçlar imzalıdır; imzasız yalnız /healthz. Metrik ve durum sayfası yok. Günlüğe başarılı istek,
+// IP, belirteç, cihaz kimliği yazılmaz; yalnız sağlayıcı reddi (providerLog). İstekten yalnız doğrulanmış belirteç ve opak kutu alınır, adres hiçbir zaman.
 import { createPublicKey, verify } from 'crypto'
 import http, { type IncomingMessage, type ServerResponse } from 'http'
 import { clientIp } from '../shared/clientIp'

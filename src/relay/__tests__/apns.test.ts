@@ -1,7 +1,7 @@
 import { generateKeyPairSync, verify, type KeyObject } from 'crypto'
 import http2 from 'http2'
 import type { AddressInfo } from 'net'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { APNS_BASES, apnsBody, createApns, type ApnsSender } from '../apns'
 import type { RelayDevice } from '../store'
 
@@ -104,6 +104,45 @@ describe('APNs', () => {
     })
     expect(await dead(device, 'x')).toBe('retry')
     dead.close()
+  })
+
+  it('ret günlüğü sağlayıcı, durum ve neden taşır, belirteç taşımaz', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    reply = { status: 400, body: JSON.stringify({ reason: 'BadTopic' }) }
+    await send(device, 'x')
+    reply = { status: 410, body: JSON.stringify({ reason: `Unregistered ${device.token}` }) }
+    await send(device, 'x')
+    expect(log.mock.calls[0][0]).toBe('relay: apns teslim etmedi (http 400, BadTopic)')
+    expect(log.mock.calls[1][0]).toBe('relay: apns teslim etmedi (http 410, neden yok)')
+    log.mockRestore()
+  })
+
+  it('başarılı gönderim günlüğe yazılmaz', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await send(device, 'x')
+    expect(log).not.toHaveBeenCalled()
+    log.mockRestore()
+  })
+
+  it('zaman aşımında HTTP/2 oturumu kapanır, sıradaki gönderim yeni bağlantı açar', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let sessions = 0
+    let hang = true
+    const slow = http2.createServer((_req, res) => {
+      if (!hang) res.writeHead(200).end()
+    })
+    slow.on('session', () => sessions++)
+    await new Promise<void>((r) => slow.listen(0, '127.0.0.1', r))
+    const at = `http://127.0.0.1:${(slow.address() as AddressInfo).port}`
+    const s = createApns({ key: privateKey, keyId: 'K', teamId: 'T', topic: 't', requestMs: 50, bases: { production: at, sandbox: at } })
+    expect(await s(device, 'x')).toBe('retry')
+    expect(log).toHaveBeenCalledWith('relay: apns teslim etmedi (http 0, timeout)')
+    hang = false
+    expect(await s(device, 'y')).toBe('ok')
+    expect(sessions).toBe(2)
+    s.close()
+    await new Promise<void>((r) => slow.close(() => r()))
+    log.mockRestore()
   })
 
   it('doğrulanmamış belirteç adrese girmez', async () => {

@@ -3,6 +3,7 @@
 import { sign, type KeyObject } from 'crypto'
 import http2 from 'http2'
 import { validDeviceToken, type RelayEnv, type RelayResult } from '../shared/relayProtocol'
+import { logDeliveryFailure } from './providerLog'
 import type { RelayDevice } from './store'
 
 export const APNS_BASES: Record<RelayEnv, string> = {
@@ -23,6 +24,8 @@ export interface ApnsOptions {
   now?: () => number
   /** yalnız testler: yerel h2c sahte sunucu */
   bases?: Record<RelayEnv, string>
+  /** yalnız testler: yanıt bekleme süresi */
+  requestMs?: number
 }
 
 export interface ApnsSender {
@@ -67,17 +70,25 @@ export function createApns(o: ApnsOptions): ApnsSender {
       if (!validDeviceToken('ios', d.token)) return resolve('gone')
       let status = 0
       let body = ''
+      let failure = ''
       let req: http2.ClientHttp2Stream
+      let current: http2.ClientHttp2Session
       try {
-        req = session(d.env).request({
+        current = session(d.env)
+        req = current.request({
           ':method': 'POST', ':path': `/3/device/${d.token}`, authorization: `bearer ${token()}`,
           'apns-topic': o.topic, 'apns-push-type': 'alert', 'apns-priority': '10',
           'apns-expiration': String(Math.floor(now() / 1000) + EXPIRATION_S), 'content-type': 'application/json'
         })
-      } catch {
+      } catch (e) {
+        logDeliveryFailure('apns', 0, (e as NodeJS.ErrnoException).code ?? 'request')
         return resolve('retry')
       }
-      req.setTimeout(REQUEST_MS, () => req.close(http2.constants.NGHTTP2_CANCEL))
+      // yanıtsız oturum kuyruktakileri de bekletir: kapatılır, sıradaki gönderim yeni bağlantı açar
+      req.setTimeout(o.requestMs ?? REQUEST_MS, () => {
+        failure = 'timeout'
+        current.destroy()
+      })
       req.on('response', (h) => {
         status = Number(h[':status'])
       })
@@ -85,7 +96,10 @@ export function createApns(o: ApnsOptions): ApnsSender {
       req.on('data', (c: string) => {
         if (body.length < 1024) body += c
       })
-      req.on('error', () => resolve('retry'))
+      req.on('error', (e: NodeJS.ErrnoException) => {
+        failure ||= e.code ?? 'stream'
+        resolve('retry')
+      })
       req.on('close', () => {
         if (status === 200) return resolve('ok')
         let reason = ''
@@ -94,6 +108,7 @@ export function createApns(o: ApnsOptions): ApnsSender {
         } catch {
           /* gövdesiz yanıt */
         }
+        logDeliveryFailure('apns', status, reason || failure)
         if (status === 410 || GONE_REASONS.has(reason)) return resolve('gone')
         if (AUTH_REASONS.has(reason)) jwt = null
         resolve('retry')
