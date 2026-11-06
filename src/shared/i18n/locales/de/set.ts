@@ -435,6 +435,7 @@ export default {
   'set.na.toggle': 'Benachrichtigungen für {email}',
   'set.about.title': "Über",
   'set.about.source': "Quellcode",
+  'set.about.privacy': "Datenschutzerklärung",
   'set.about.license': "AGPL-3.0-Lizenz",
   'set.nd.title': 'Registrierte Geräte',
   'set.nd.hint': "Browser und Geräte, die Push-Benachrichtigungen erhalten. Das Entfernen der Desktop-App oder eines anderen Telefons meldet es ab; nutze das bei einem verlorenen Telefon. Das Entfernen eines Browsers meldet ihn nicht ab: Ist er noch angemeldet, registriert er sich beim nächsten Öffnen erneut. Zum dauerhaften Beenden schalte dort die Benachrichtigungen aus oder melde dich ab. Ein Telefon, das seine Benachrichtigungen ausschaltet, verschwindet aus dieser Liste, bleibt aber angemeldet: Beende es unter Meine Sitzungen im Bereich Tresor.",

@@ -148,6 +148,7 @@ export const test = base.extend<{ server: GeckoServer; publicHost: string; pushS
       GECKO_DATA_DIR: dataDir,
       GECKO_LISTEN: `127.0.0.1:${port}`,
       GECKO_PUBLIC_ORIGIN: url,
+      GECKO_MAIL_PRIVATE_HOSTS: '127.0.0.1', // sahte posta sunucusu
       ...(dav ? { GECKO_DAV_PRIVATE_HOSTS: new URL(dav.url).host } : {})
     }
     const cli = (args: string[], stdin?: string) => run(env, args, stdin)

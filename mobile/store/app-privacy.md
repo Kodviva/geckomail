@@ -14,4 +14,4 @@ Geliştirici yalnız push belirteci ve zamanı işler: amaç bildirim, paylaşı
 
 Röle ayrıca platform, APNs ortamı, motor açık anahtarı, sabit boylu şifreli kutu ve bağlantı anında IP görür. IP yazılmaz; oran sınırı önyüklemede üretilen rastgele tuzla özetlenip yalnız bellekte tutulur. Seviye, boyut ve gruplama röleden gizlenir: sabit öncelik, sabit TTL, `apns-collapse-id` yok, sabit doldurma.
 
-Şifreleme uyumu: yalnız standart TLS ve bildirim yükü için RFC 8291 (`ITSAppUsesNonExemptEncryption` değeri sahibi hukukçusuyla kesinleştirir).
+Şifreleme uyumu: yalnız standart TLS, bildirim yükü için RFC 8291 ve çevrimdışı önbellek için AES-256-GCM (`ITSAppUsesNonExemptEncryption` değeri sahibi hukukçusuyla kesinleştirir).

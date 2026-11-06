@@ -546,7 +546,7 @@ describe('configFromEnv', () => {
   it('defaults', () => {
     expect(configFromEnv({ GECKO_PUBLIC_ORIGIN: 'https://posta.example.com/' })).toEqual({
       dataDir: '/data', listenHost: '0.0.0.0', listenPort: 8080, keyFile: '/data/master.key',
-      publicOrigin: 'https://posta.example.com', trustedProxyDepth: 0, idleMax: 40, davPrivateHosts: [], mobileEnabled: true, relayUrl: 'https://relay.kodviva.com',
+      publicOrigin: 'https://posta.example.com', trustedProxyDepth: 0, idleMax: 40, davPrivateHosts: [], mailPrivateHosts: [], mobileEnabled: true, relayUrl: 'https://relay.kodviva.com',
       webDir: expect.stringMatching(/[\\/]web$/)
     })
   })
@@ -559,7 +559,7 @@ describe('configFromEnv', () => {
       })
     ).toEqual({
       dataDir: '/srv/g', listenHost: '::', listenPort: 9000, keyFile: '/run/k', publicOrigin: 'http://localhost:9000', trustedProxyDepth: 1,
-      idleMax: 40, davPrivateHosts: [], mobileEnabled: false, relayUrl: 'https://relay.kodviva.com', webDir: '/srv/web'
+      idleMax: 40, davPrivateHosts: [], mailPrivateHosts: [], mobileEnabled: false, relayUrl: 'https://relay.kodviva.com', webDir: '/srv/web'
     })
   })
 

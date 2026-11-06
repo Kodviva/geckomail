@@ -443,6 +443,7 @@ export default {
   'set.na.toggle': 'Notificações de {email}',
   'set.about.title': "Sobre",
   'set.about.source': "Código-fonte",
+  'set.about.privacy': "Política de privacidade",
   'set.about.license': "Licença AGPL-3.0",
   'set.nd.title': 'Dispositivos registrados',
   'set.nd.hint': "Navegadores e dispositivos que recebem notificações push. Remover o aplicativo de desktop ou outro telefone encerra a sessão dele; use isso para um telefone perdido. Remover um navegador não encerra a sessão: se ele continuar com a sessão iniciada, ele se registra de novo na próxima vez que for aberto. Para parar de vez, desative as notificações ou saia da conta nele. Um telefone que desativa as notificações sai desta lista, mas continua conectado: encerre-o em Minhas sessões, na seção Cofre.",

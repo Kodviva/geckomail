@@ -8,7 +8,15 @@ GeckoMail, sizin ya da kuruluşunuzun işlettiği GeckoMail sunucusuna bağlanı
 
 ## Sunucunuzdaki veriler
 
-Oturum, posta ve hesap bilgileri uygulama ile sizin sunucunuz arasında TLS ile taşınır. Bu verilerden sunucu yöneticiniz sorumludur. Uygulama cihazda yalnız şunları tutar: oturum belirteci (iOS Keychain, Android Keystore ile şifreli), bildirim anahtarları, seçili sunucu adresi, kilit ayarı, geçici ek önbelleği (24 saatte silinir, çıkışta tamamen silinir).
+Oturum, posta ve hesap bilgileri uygulama ile sizin sunucunuz arasında TLS ile taşınır. Bu verilerden sunucu yöneticiniz sorumludur. Uygulama cihazda yalnız şunları tutar:
+
+- Oturum belirteci (iOS Keychain, Android Keystore ile şifreli).
+- Bildirim anahtarları ve bildirim açıksa push belirteci (iOS UserDefaults, Android uygulama tercihleri). Bildirimi kapatınca ya da çıkış yapınca silinir.
+- Seçili sunucu adresi ve kilit ayarı.
+- Yazılan iletinin taslağı (uygulama içi localStorage, düz metin). Ekler ve kasa hesabından ya da şifreli iletiden gelen metin yazılmaz. İleti gönderilince ya da taslak atılınca silinir.
+- Paylaş menüsünden seçilen dosyalar: uygulama açılana dek paylaşım kutusunda durur, 24 saatte silinir.
+- Geçici ek önbelleği (24 saatte silinir, çıkışta tamamen silinir).
+- Çevrimdışı önbellek, açılırsa ve cihaz destekliyorsa: iletiler AES-256-GCM ile şifreli tutulur.
 
 ## Bildirim aktarıcısı (geckomail-relay)
 
@@ -30,7 +38,7 @@ Uygulama reklam, analitik ya da izleme kitaplığı içermez. Sizi başka uygula
 
 ## Çocuklar
 
-Uygulama 13 yaşın altındaki çocuklara yönelik değildir.
+Uygulama 18 yaş altına yönelik değildir.
 
 ## Değişiklikler
 

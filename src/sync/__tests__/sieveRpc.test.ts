@@ -277,7 +277,7 @@ describe.each(['server', 'desktop'] as const)('Sieve RPC (%s)', (mode) => {
     it('a member cannot abandon: the refusal stays', async () => {
       await deployedThenDead()
       const s = asMember(memberOf({ manageableGroupIds: [groupA] }))
-      await expect(call(s, 'updateAccount', { accountId: accA, patch: { imapHost: 'yeni.t.test' }, abandonSieve: true })).rejects.toThrow(t('sync.sieve.endpointRefused', { reason: '' }).slice(0, 20))
+      await expect(call(s, 'updateAccount', { accountId: accA, patch: { imapHost: 'yeni.t.test' }, abandonSieve: true })).rejects.toThrow(t('sync.perm.adminRequired'))
       await expect(call(s, 'sieveSetEndpoint', { accountId: accA, host: '8.8.8.8', port: 4190, abandon: true })).rejects.toThrow()
       kept()
     })

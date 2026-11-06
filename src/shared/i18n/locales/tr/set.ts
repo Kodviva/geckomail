@@ -435,6 +435,7 @@ export default {
   'set.na.toggle': '{email} için bildirim',
   'set.about.title': "Hakkında",
   'set.about.source': "Kaynak kodu",
+  'set.about.privacy': "Gizlilik politikası",
   'set.about.license': "AGPL-3.0 lisansı",
   'set.nd.title': 'Kayıtlı cihazlar',
   'set.nd.hint': "Anlık bildirim alan tarayıcı ve cihazlarınız. Masaüstü uygulamasını ya da başka bir telefonu kaldırmak oturumunu kapatır; kayıp telefon için bunu kullanın. Tarayıcıyı kaldırmak oturumunu kapatmaz: o tarayıcıda oturum açıksa bir sonraki açılışta kendini yeniden kaydeder, kalıcı durdurmak için orada bildirimleri kapatın ya da çıkış yapın. Bildirimini kapatan telefon bu listeden çıkar, oturumu sürer: onu Kasa bölümündeki Oturumlarım'dan kapatın.",

@@ -435,6 +435,7 @@ export default {
   'set.na.toggle': 'Notifications for {email}',
   'set.about.title': "About",
   'set.about.source': "Source code",
+  'set.about.privacy': "Privacy policy",
   'set.about.license': "AGPL-3.0 license",
   'set.nd.title': 'Registered devices',
   'set.nd.hint': "Browsers and devices that receive push notifications. Removing the desktop app or another phone signs it out; use this for a lost phone. Removing a browser does not sign it out: if it is still signed in, it registers again the next time it is opened. To stop it for good, turn off notifications or sign out there. A phone that turns off its notifications leaves this list but stays signed in: close it under My sessions in the Vault section.",

@@ -418,6 +418,7 @@ export default {
   'set.na.toggle': 'Notifications pour {email}',
   'set.about.title': "À propos",
   'set.about.source': "Code source",
+  'set.about.privacy': "Politique de confidentialité",
   'set.about.license': "Licence AGPL-3.0",
   'set.nd.title': 'Appareils enregistrés',
   'set.nd.hint': "Navigateurs et appareils qui reçoivent les notifications push. Retirer l'application de bureau ou un autre téléphone ferme sa session ; utilisez ceci pour un téléphone perdu. Retirer un navigateur ne ferme pas sa session : s'il est toujours connecté, il se réinscrit à sa prochaine ouverture. Pour l'arrêter définitivement, désactivez-y les notifications ou déconnectez-vous. Un téléphone qui désactive ses notifications quitte cette liste mais reste connecté : fermez-le dans Mes sessions, section Coffre.",

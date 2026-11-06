@@ -427,6 +427,7 @@ export default {
   'set.na.toggle': '{email} 的通知',
   'set.about.title': "关于",
   'set.about.source': "源代码",
+  'set.about.privacy': "隐私政策",
   'set.about.license': "AGPL-3.0 许可证",
   'set.nd.title': '已注册的设备',
   'set.nd.hint': "接收推送通知的浏览器和设备。移除桌面应用或其他手机会使其退出登录；手机丢失时请使用此操作。移除浏览器不会使其退出登录：若它仍处于登录状态，下次打开时会重新注册。要彻底停止，请在该浏览器上关闭通知或退出登录。 关闭通知的手机会从此列表中消失，但仍保持登录：请在保险库部分的“我的会话”中关闭它。",

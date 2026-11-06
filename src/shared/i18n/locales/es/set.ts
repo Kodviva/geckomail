@@ -430,6 +430,7 @@ export default {
   'set.na.toggle': 'Notificaciones de {email}',
   'set.about.title': "Acerca de",
   'set.about.source': "Código fuente",
+  'set.about.privacy': "Política de privacidad",
   'set.about.license': "Licencia AGPL-3.0",
   'set.nd.title': 'Dispositivos registrados',
   'set.nd.hint': "Navegadores y dispositivos que reciben notificaciones push. Eliminar la aplicación de escritorio u otro teléfono cierra su sesión; úsalo si pierdes un teléfono. Eliminar un navegador no cierra su sesión: si sigue con la sesión iniciada, se registra de nuevo la próxima vez que se abra. Para detenerlo del todo, desactiva allí las notificaciones o cierra sesión. Un teléfono que desactiva sus notificaciones sale de esta lista pero sigue con la sesión iniciada: ciérrala en Mis sesiones, sección Caja fuerte.",
