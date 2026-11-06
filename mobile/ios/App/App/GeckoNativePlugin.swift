@@ -37,6 +37,7 @@ public class GeckoNativePlugin: CAPPlugin, CAPBridgedPlugin {
             case .ok(let user):
                 s.pushLogin.signedIn(userId: (user["id"] as? NSNumber)?.intValue ?? 0)
                 await s.pushLogin.reregister()
+                await s.pushLogin.retryUnregister()
                 call.resolve(["ok": true, "user": user])
             case .failed(let reason): call.resolve(["ok": false, "reason": reason])
             }

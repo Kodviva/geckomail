@@ -173,9 +173,22 @@ final class SessionApi {
         return .auth
     }
 
-    func unregisterDevice(id: Int) async {
-        guard case .ok(let access, _) = await access(force: false) else { return }
-        _ = await post("/api/push/devices/\(id)", bearer: access, json: nil, method: "DELETE")
+    /// false: sunucuya ulaşılamadı, satır duruyor olabilir. Oturum bittiyse satır onunla silinmiştir; 404 zaten yok demektir
+    @discardableResult
+    func unregisterDevice(id: Int) async -> Bool {
+        var force = false
+        for _ in 0..<2 {
+            let token: String
+            switch await access(force: force) {
+            case .ok(let t, _): token = t
+            case .gone: return true
+            case .idle, .network: return false
+            }
+            guard let r = await post("/api/push/devices/\(id)", bearer: token, json: nil, method: "DELETE") else { return false }
+            if r.status != 401 { return (200..<300).contains(r.status) || r.status == 404 }
+            force = true
+        }
+        return false
     }
 
     private func post(_ path: String, bearer: String?, json: [String: Any]?, at base: String? = nil, method: String = "POST") async -> (status: Int, data: Data)? {

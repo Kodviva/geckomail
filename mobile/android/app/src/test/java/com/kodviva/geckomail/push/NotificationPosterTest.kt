@@ -39,11 +39,15 @@ private class FakeKeys(var material: Material? = null) : PushKeySource {
 private class FakeDevices(var outcome: RegisterOutcome = RegisterOutcome.Ok(9)) : DevicePort {
     val registered = mutableListOf<String>()
     val removed = mutableListOf<Long>()
+    var reachable = true
     override suspend fun registerDevice(token: String, p256dh: String, auth: String, label: String?): RegisterOutcome {
         registered += token
         return outcome
     }
-    override suspend fun unregisterDevice(id: Long) { removed += id }
+    override suspend fun unregisterDevice(id: Long): Boolean {
+        removed += id
+        return reachable
+    }
 }
 
 private class MemoryPushPrefs : PushPrefs {
@@ -52,11 +56,15 @@ private class MemoryPushPrefs : PushPrefs {
     override var deviceId = 0L
     override var userId = 0L
     override var pendingRegister = false
+    override var lastRegisterAt = 0L
+    override var pendingUnregister = 0L
 }
 
 private class FakeGateway(var ready: Boolean, var value: String? = "fcm-token") : FcmGateway {
     override fun available() = ready
     override suspend fun token() = value
+    val autoInit = mutableListOf<Boolean>()
+    override fun autoInit(on: Boolean) { autoInit += on }
 }
 
 class NotificationPosterTest {
@@ -212,6 +220,87 @@ class NotificationPosterTest {
         assertEquals(1, keys.deleted)
     }
 
+    @Test fun tokenChangeMarksPendingBeforeRegister() = runTest {
+        val api = FakeDevices(RegisterOutcome.Failed)
+        val prefs = MemoryPushPrefs().apply { enabled = true; deviceToken = "eski" }
+        val r = DeviceRegistrar(api, FakeKeys(), prefs, null, FakeGateway(true))
+        r.tokenChanged("yeni")
+        assertTrue(prefs.pendingRegister)
+        api.outcome = RegisterOutcome.Ok(11)
+        r.retryPendingRegister()
+        assertFalse(prefs.pendingRegister)
+        assertEquals(listOf("yeni", "yeni"), api.registered)
+    }
+
+    @Test fun refreshRepeatsAtMostOnceADay() = runTest {
+        val day = 24 * 3_600_000L
+        var t = 10 * day
+        val api = FakeDevices()
+        val prefs = MemoryPushPrefs().apply { enabled = true; deviceToken = "eski"; deviceId = 9; lastRegisterAt = t - day + 1 }
+        val gateway = FakeGateway(true, "taze")
+        val r = DeviceRegistrar(api, FakeKeys(), prefs, null, gateway, now = { t })
+        r.refreshIfDue()
+        assertTrue(api.registered.isEmpty())
+        t += 1
+        r.refreshIfDue()
+        r.refreshIfDue()
+        assertEquals(listOf("taze"), api.registered)
+        assertEquals(t, prefs.lastRegisterAt)
+        assertEquals(listOf(true), gateway.autoInit)
+    }
+
+    @Test fun refreshKeepsPendingOnFailureAndSkipsWhenOff() = runTest {
+        val api = FakeDevices(RegisterOutcome.Failed)
+        val prefs = MemoryPushPrefs().apply { enabled = true; deviceToken = "t" }
+        DeviceRegistrar(api, FakeKeys(), prefs, null, FakeGateway(true), now = { 1_000_000_000L }).refreshIfDue()
+        assertTrue(prefs.pendingRegister)
+        assertEquals(0L, prefs.lastRegisterAt)
+        val off = FakeDevices()
+        DeviceRegistrar(off, FakeKeys(), MemoryPushPrefs().apply { deviceToken = "t" }, null, FakeGateway(true), now = { 1_000_000_000L }).refreshIfDue()
+        assertTrue(off.registered.isEmpty())
+    }
+
+    @Test fun disableKeepsPendingUntilServerReached() = runTest {
+        val api = FakeDevices().apply { reachable = false }
+        val keys = FakeKeys()
+        val prefs = MemoryPushPrefs().apply { enabled = true; deviceId = 9 }
+        val r = DeviceRegistrar(api, keys, prefs, null, FakeGateway(true))
+        r.disable()
+        assertEquals(9L, prefs.pendingUnregister)
+        assertFalse(prefs.enabled)
+        assertEquals(1, keys.deleted)
+        r.retryPendingUnregister()
+        assertEquals(9L, prefs.pendingUnregister)
+        api.reachable = true
+        r.retryPendingUnregister()
+        assertEquals(0L, prefs.pendingUnregister)
+        assertEquals(listOf(9L, 9L, 9L), api.removed)
+    }
+
+    @Test fun reEnablingCancelsPendingUnregister() = runTest {
+        val api = FakeDevices()
+        val prefs = MemoryPushPrefs().apply { pendingUnregister = 9 }
+        val r = DeviceRegistrar(api, FakeKeys(), prefs, null, FakeGateway(true))
+        r.enable()
+        r.retryPendingUnregister()
+        assertEquals(0L, prefs.pendingUnregister)
+        assertTrue(api.removed.isEmpty())
+    }
+
+    @Test fun autoInitFollowsUserChoice() = runTest {
+        val gateway = FakeGateway(true)
+        val api = FakeDevices(RegisterOutcome.Failed)
+        val prefs = MemoryPushPrefs()
+        val r = DeviceRegistrar(api, FakeKeys(), prefs, null, gateway)
+        r.enable()
+        assertEquals(listOf(true, false), gateway.autoInit)
+        api.outcome = RegisterOutcome.Ok(9)
+        r.enable()
+        assertEquals(listOf(true, false, true), gateway.autoInit)
+        r.disable()
+        assertEquals(listOf(true, false, true, false), gateway.autoInit)
+    }
+
     @Test fun differentUserAfterIdleWipesAndRotates() = runTest {
         val keys = FakeKeys()
         val first = keys.loadOrCreate()
@@ -317,7 +406,7 @@ class NotificationPosterTest {
                 r.clear() // kayıt sürerken çıkış
                 return RegisterOutcome.Ok(11)
             }
-            override suspend fun unregisterDevice(id: Long) {}
+            override suspend fun unregisterDevice(id: Long) = true
         }
         r = DeviceRegistrar(api, FakeKeys(), prefs, null, FakeGateway(true))
         r.retryPendingRegister()

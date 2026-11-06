@@ -287,6 +287,18 @@ final class DeviceRegistrationTests: XCTestCase {
         XCTAssertEqual(q.httpMethod, "DELETE")
         XCTAssertEqual(q.url?.path, "/api/push/devices/5")
     }
+
+    func testUnregisterFailsOnServerError() async {
+        reply(502, nil)
+        let done = await api.unregisterDevice(id: 5)
+        XCTAssertFalse(done)
+    }
+
+    func testUnregisterMissingRowIsDone() async {
+        reply(404, nil)
+        let done = await api.unregisterDevice(id: 5)
+        XCTAssertTrue(done)
+    }
 }
 
 final class PushLoginTests: XCTestCase {
@@ -298,6 +310,9 @@ final class PushLoginTests: XCTestCase {
     private var synced: [String] = []
     private var outcome = DeviceOutcome.ok(id: 5)
     private var login: PushLogin!
+    private var clock = Date(timeIntervalSince1970: 1_800_000_000)
+    private var removed: [Int] = []
+    private var reachable = true
 
     override func setUp() {
         defaults = UserDefaults(suiteName: "PushLoginTests")
@@ -305,7 +320,70 @@ final class PushLoginTests: XCTestCase {
         login = PushLogin(defaults: defaults, enabled: { [unowned self] in self.enabled }, token: { [unowned self] in self.token },
                           rotate: { [unowned self] in self.rotated += 1 },
                           userChanged: { [unowned self] in self.filesWiped += 1 },
-                          sync: { [unowned self] t in self.synced.append(t); return self.outcome })
+                          sync: { [unowned self] t in
+                              self.synced.append(t)
+                              if case .ok = self.outcome { self.login.registered() }
+                              return self.outcome
+                          },
+                          unregister: { [unowned self] id in self.removed.append(id); return self.reachable },
+                          now: { [unowned self] in self.clock })
+    }
+
+    func testRefreshRepeatsAtMostOnceADay() async {
+        await login.refresh(token: "t") // ilk kez: kayıt zamanı yok
+        XCTAssertEqual(synced, ["t"])
+        clock += 86_399
+        XCTAssertFalse(login.refreshDue())
+        await login.refresh(token: "t")
+        XCTAssertEqual(synced.count, 1)
+        clock += 1
+        XCTAssertTrue(login.refreshDue())
+        await login.refresh(token: "t")
+        XCTAssertEqual(synced.count, 2)
+        await login.refresh(token: "t")
+        XCTAssertEqual(synced.count, 2)
+    }
+
+    func testChangedTokenRegistersAtOnce() async {
+        await login.refresh(token: "t")
+        await login.refresh(token: "yeni")
+        XCTAssertEqual(synced, ["t", "yeni"])
+    }
+
+    func testFailedRefreshStaysPending() async {
+        outcome = .failed
+        await login.refresh(token: "t")
+        XCTAssertTrue(login.refreshDue())
+        outcome = .ok(id: 5)
+        await login.retry()
+        XCTAssertEqual(synced.count, 2)
+        await login.retry()
+        XCTAssertEqual(synced.count, 2)
+    }
+
+    func testRefreshSkippedWhenPushOff() async {
+        enabled = false
+        await login.refresh(token: "t")
+        XCTAssertTrue(synced.isEmpty)
+    }
+
+    func testUnregisterStaysPendingUntilServerReached() async {
+        reachable = false
+        await login.queueUnregister(id: 9)
+        await login.retryUnregister()
+        XCTAssertEqual(removed, [9, 9])
+        reachable = true
+        await login.retryUnregister()
+        await login.retryUnregister()
+        XCTAssertEqual(removed, [9, 9, 9])
+    }
+
+    func testReEnablingCancelsPendingUnregister() async {
+        reachable = false
+        await login.queueUnregister(id: 9)
+        login.registered()
+        await login.retryUnregister()
+        XCTAssertEqual(removed, [9])
     }
 
     func testDifferentUserAfterIdleWipesAndRotates() async {

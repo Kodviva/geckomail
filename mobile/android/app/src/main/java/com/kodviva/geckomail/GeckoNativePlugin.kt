@@ -61,6 +61,7 @@ class GeckoNativePlugin : Plugin() {
                 is LoginOutcome.Ok -> {
                     s.registrar.signedIn(r.user.optLong("id", 0))
                     s.registrar.reregisterAfterLogin()
+                    s.registrar.retryPendingUnregister()
                     call.resolve(result("ok" to true, "user" to r.user))
                 }
                 is LoginOutcome.Failed -> call.resolve(result("ok" to false, "reason" to r.reason))

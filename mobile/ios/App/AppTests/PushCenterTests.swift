@@ -5,10 +5,17 @@ import XCTest
 private final class FakeActions: ActionPoster {
     var outcome = ActionOutcome.ok
     var hang = false
+    /// İptali dinlemeyen iş: gerçek istek de hemen dönmeyebilir
+    var stubborn = false
     var calls: [(Int, String)] = []
     func notifyAction(messageId: Int, action: String) async -> ActionOutcome {
         calls.append((messageId, action))
         if hang { try? await Task.sleep(nanoseconds: 5_000_000_000) }
+        if stubborn {
+            await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                DispatchQueue.global().asyncAfter(deadline: .now() + 3) { c.resume() }
+            }
+        }
         return outcome
     }
 }
@@ -20,6 +27,13 @@ private final class FakeCenter: NotificationPosting {
     func removeDelivered(_ id: String) { removed.append(id) }
     func showRelogin() { reloginShown += 1 }
     func showLocked() { lockedShown += 1 }
+}
+
+private extension PushCenter {
+    /// Bekleme kaydolduktan sonra gelir: gerçek AppDelegate çağrısı gibi
+    func scheduleTokenForTest(_ token: String) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.02) { self.tokenArrived(token) }
+    }
 }
 
 final class PushCenterDelegateTests: XCTestCase {
@@ -87,6 +101,38 @@ final class PushCenterTests: XCTestCase {
         let started = Date()
         await center.process(action: "gecko.action.read", id: "n1", info: ["messageId": 7])
         XCTAssertLessThan(Date().timeIntervalSince(started), 2)
+    }
+
+    func testCompletesWithinLimitWhenWorkIgnoresCancel() async {
+        actions.stubborn = true
+        let started = Date()
+        await center.process(action: "gecko.action.read", id: "n1", info: ["messageId": 7])
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2)
+    }
+
+    func testDeviceTokenTimesOutWhenApnsNeverAnswers() async {
+        var asked = 0
+        let quiet = PushCenter(actions: { [unowned self] in self.actions }, posting: posting, limit: 0.2, locked: { false }, tokenWait: 0.1, requestToken: { asked += 1 })
+        let started = Date()
+        let token = await quiet.deviceToken()
+        XCTAssertNil(token)
+        XCTAssertEqual(asked, 1)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2)
+    }
+
+    func testDeviceTokenDeliveredOnce() async {
+        let c = PushCenter(actions: { [unowned self] in self.actions }, posting: posting, limit: 0.2, locked: { false }, tokenWait: 0.1, requestToken: {})
+        c.scheduleTokenForTest("jeton")
+        let token = await c.deviceToken()
+        XCTAssertEqual(token, "jeton")
+        try? await Task.sleep(nanoseconds: 200_000_000) // süre dolunca ikinci kez devam edilirse süreç düşer
+    }
+
+    func testTokenRequiresPermission() {
+        XCTAssertTrue(pushTokenAllowed(.authorized))
+        XCTAssertTrue(pushTokenAllowed(.provisional))
+        XCTAssertFalse(pushTokenAllowed(.denied))
+        XCTAssertFalse(pushTokenAllowed(.notDetermined))
     }
 
     func testTapQueuesOpen() async {

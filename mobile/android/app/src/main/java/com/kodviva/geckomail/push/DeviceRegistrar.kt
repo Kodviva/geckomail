@@ -8,6 +8,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 
 private const val TOKEN_WAIT_MS = 15_000L
+private const val REFRESH_MS = 24 * 3_600_000L
 
 sealed interface RegisterOutcome {
     data class Ok(val id: Long) : RegisterOutcome
@@ -18,7 +19,8 @@ sealed interface RegisterOutcome {
 
 interface DevicePort {
     suspend fun registerDevice(token: String, p256dh: String, auth: String, label: String?): RegisterOutcome
-    suspend fun unregisterDevice(id: Long)
+    /** false: sunucuya ulaşılamadı, satır duruyor olabilir */
+    suspend fun unregisterDevice(id: Long): Boolean
 }
 
 interface PushPrefs {
@@ -29,6 +31,10 @@ interface PushPrefs {
     var userId: Long
     /** Girişten sonraki kayıt sunucuya ulaşmadı: açılışta ve ağ dönünce yeniden denenir */
     var pendingRegister: Boolean
+    /** Son başarılı kaydın zamanı: yenileme günde en çok bir kez */
+    var lastRegisterAt: Long
+    /** Bildirim kapatıldı ama satır sunucuda silinemedi: bu kimlik yeniden denenir */
+    var pendingUnregister: Long
 }
 
 class StoredPushPrefs(ctx: Context) : PushPrefs {
@@ -48,11 +54,19 @@ class StoredPushPrefs(ctx: Context) : PushPrefs {
     override var pendingRegister: Boolean
         get() = prefs.getBoolean("pendingRegister", false)
         set(v) = prefs.edit().putBoolean("pendingRegister", v).apply()
+    override var lastRegisterAt: Long
+        get() = prefs.getLong("lastRegisterAt", 0)
+        set(v) = prefs.edit().putLong("lastRegisterAt", v).apply()
+    override var pendingUnregister: Long
+        get() = prefs.getLong("pendingUnregister", 0)
+        set(v) = prefs.edit().putLong("pendingUnregister", v).apply()
 }
 
 interface FcmGateway {
     fun available(): Boolean
     suspend fun token(): String?
+    /** Kapalıyken Firebase kendiliğinden jeton üretmez (manifest varsayılanı); kullanıcı bildirimi açınca etkinleşir */
+    fun autoInit(on: Boolean)
 }
 
 /** google-services.json yoksa FirebaseApp başlamaz: bildirim yok ama uygulama çökmez */
@@ -64,6 +78,10 @@ class SystemFcm(private val ctx: Context) : FcmGateway {
             FirebaseMessaging.getInstance().token.addOnCompleteListener { t -> c.resume(if (t.isSuccessful) t.result else null) }
         }
     }
+
+    override fun autoInit(on: Boolean) {
+        if (available()) FirebaseMessaging.getInstance().isAutoInitEnabled = on
+    }
 }
 
 class DeviceRegistrar(
@@ -73,7 +91,8 @@ class DeviceRegistrar(
     private val label: String?,
     private val gateway: FcmGateway,
     private val onCleared: () -> Unit = {},
-    private val onUserChanged: () -> Unit = {}
+    private val onUserChanged: () -> Unit = {},
+    private val now: () -> Long = System::currentTimeMillis
 ) {
     /** Çıkış sürmekte olan kaydı geçersiz kılar: geç gelen yanıt push'u geri açmaz */
     @Volatile private var epoch = 0
@@ -83,7 +102,10 @@ class DeviceRegistrar(
 
     suspend fun enable(): RegisterOutcome {
         if (!gateway.available()) return RegisterOutcome.Unavailable
-        return register(gateway.token() ?: return RegisterOutcome.Failed)
+        gateway.autoInit(true)
+        val r = gateway.token()?.let { register(it) } ?: RegisterOutcome.Failed
+        if (!prefs.enabled) gateway.autoInit(false)
+        return r
     }
 
     suspend fun register(token: String): RegisterOutcome {
@@ -94,6 +116,8 @@ class DeviceRegistrar(
             prefs.enabled = true
             prefs.deviceToken = token
             prefs.deviceId = r.id
+            prefs.lastRegisterAt = now()
+            prefs.pendingUnregister = 0
         }
         return r
     }
@@ -102,7 +126,22 @@ class DeviceRegistrar(
     suspend fun tokenChanged(token: String) {
         if (!prefs.enabled || token == prefs.deviceToken) return
         prefs.deviceToken = token
-        register(token)
+        prefs.pendingRegister = true
+        retryPendingRegister()
+    }
+
+    /** Sunucu satırı silmiş olabilir (röle `gone`, süresi dolan kayıt). Bildirim açıksa kayıt günde en çok bir kez yinelenir:
+     *  röle motor başına saatte 60 kayıt kabul eder. Saat geri alındıysa da yenilenir */
+    suspend fun refreshIfDue() {
+        val since = now() - prefs.lastRegisterAt
+        if (prefs.enabled && prefs.deviceToken != null && (since < 0 || since >= REFRESH_MS)) {
+            if (gateway.available()) {
+                gateway.autoInit(true) // önceki sürümden gelen açık kurulum
+                gateway.token()?.let { prefs.deviceToken = it }
+            }
+            prefs.pendingRegister = true
+        }
+        retryPendingRegister()
     }
 
     /** Giriş kaydından önce çağrılır. Başka kullanıcı girdiyse önceki kullanıcının görünen bildirimleri ve push anahtarı gider,
@@ -140,15 +179,25 @@ class DeviceRegistrar(
         }
     }
 
+    /** Bekleme denemeden önce yazılır: ağ yoksa ya da süreç ölürse satır sonraki açılışta silinir */
     suspend fun disable() {
         val id = prefs.deviceId
-        if (id > 0) api.unregisterDevice(id)
+        if (id > 0) prefs.pendingUnregister = id
+        retryPendingUnregister()
+        gateway.autoInit(false)
         clearPush()
+    }
+
+    /** Bu arada bildirim yeniden açıldıysa kayıt bekleyen işi siler */
+    suspend fun retryPendingUnregister() {
+        val id = prefs.pendingUnregister
+        if (id > 0 && api.unregisterDevice(id) && prefs.pendingUnregister == id) prefs.pendingUnregister = 0
     }
 
     /** Çıkışta push anahtarı gider, son kullanıcı unutulur */
     fun clear() {
         prefs.userId = 0
+        gateway.autoInit(false)
         clearPush()
     }
 

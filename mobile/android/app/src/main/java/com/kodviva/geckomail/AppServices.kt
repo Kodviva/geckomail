@@ -62,6 +62,7 @@ class AppServices private constructor(ctx: Context) {
             override fun onAvailable(network: Network) {
                 scope.launch {
                     api.retryPendingLogout()
+                    registrar.retryPendingUnregister()
                     registrar.retryPendingRegister()
                 }
             }

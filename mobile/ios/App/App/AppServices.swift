@@ -19,7 +19,8 @@ final class AppServices {
             UNUserNotificationCenter.current().removeAllDeliveredNotifications()
         },
         userChanged: { [weak self] in self?.wipeUserFiles() },
-        sync: { [weak self] token in await self?.syncDevice(token: token) ?? .failed })
+        sync: { [weak self] token in await self?.syncDevice(token: token) ?? .failed },
+        unregister: { [weak self] id in await self?.api.unregisterDevice(id: id) ?? false })
     private let monitor = NWPathMonitor()
     let attachments = AttachmentCache(root: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("attachments"))
     let inbox = ShareInbox.shared()
@@ -75,6 +76,8 @@ final class AppServices {
         guard let keys = try? PushKeys.loadOrCreate() else { return .failed }
         let label = await UIDevice.current.model
         let mine = pushEpoch
+        // başarısız kayıt da yeni jetonu tutar: oturum gelince ya da ağ dönünce bekleyen iş bunu bildirir (Android ile aynı)
+        if pushEnabled { UserDefaults.standard.set(token, forKey: pushTokenKey) }
         let r = await api.registerDevice(env: apnsEnv, token: token, p256dh: keys.p256dh, auth: keys.auth, label: label)
         guard mine == pushEpoch else { return r }
         if case .ok(let id) = r {
@@ -82,15 +85,14 @@ final class AppServices {
             d.set(true, forKey: pushEnabledKey)
             d.set(token, forKey: pushTokenKey)
             d.set(id, forKey: pushDeviceKey)
-        } else if case .auth = r, pushEnabled {
-            UserDefaults.standard.set(token, forKey: pushTokenKey) // oturum yok: jeton saklanır, girişte bildirilir (Android ile aynı)
+            pushLogin.registered()
         }
         return r
     }
 
     func disablePush() async {
         let id = UserDefaults.standard.integer(forKey: pushDeviceKey)
-        if id > 0 { await api.unregisterDevice(id: id) }
+        await pushLogin.queueUnregister(id: id)
         clearPush()
     }
 
@@ -112,7 +114,7 @@ final class AppServices {
         sweepFiles()
         PushKeys.useSharedGroup()
         PushCenter.shared.start()
-        if pushEnabled { UIApplication.shared.registerForRemoteNotifications() }
+        if pushEnabled { requestTokenIfAllowed() }
         let center = NotificationCenter.default
         center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self else { return }
@@ -122,38 +124,66 @@ final class AppServices {
         center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
             self?.lock.didBecomeForeground()
             self?.sweepFiles()
-            if let self { Task { await self.pushLogin.retry() } }
+            guard let self else { return }
+            if self.pushEnabled, self.pushLogin.refreshDue() { self.requestTokenIfAllowed() }
+            Task {
+                await self.pushLogin.retryUnregister()
+                await self.pushLogin.retry()
+            }
         }
         monitor.pathUpdateHandler = { [weak self] path in
             guard path.status == .satisfied, let self else { return }
             Task {
                 await self.api.retryPendingLogout()
+                await self.pushLogin.retryUnregister()
                 await self.pushLogin.retry()
             }
         }
         monitor.start(queue: .global(qos: .utility))
     }
+
+    /// Jeton yalnız bildirim izni varken istenir: izin sonradan geri alındıysa kurulum APNs'e kaydolmaz
+    private func requestTokenIfAllowed() {
+        Task {
+            let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+            guard pushTokenAllowed(status) else { return }
+            await MainActor.run { UIApplication.shared.registerForRemoteNotifications() }
+        }
+    }
+}
+
+func pushTokenAllowed(_ status: UNAuthorizationStatus) -> Bool {
+    status == .authorized || status == .provisional || status == .ephemeral
 }
 
 /// Push kaydının girişe bağlı kuralları (Android: DeviceRegistrar)
 final class PushLogin {
     private let userKey = "gecko.push.user"
     private let pendingKey = "gecko.push.pending"
+    private let registeredAtKey = "gecko.push.registeredAt"
+    private let pendingUnregisterKey = "gecko.push.pendingUnregister"
+    /// Röle motor başına saatte 60 kayıt kabul eder: yenileme günde en çok bir kez
+    private let refreshInterval: TimeInterval = 86_400
     private let defaults: UserDefaults
     private let enabled: () -> Bool
     private let token: () -> String?
     private let rotate: () -> Void
     private let userChanged: () -> Void
     private let sync: (String) async -> DeviceOutcome
+    private let unregister: (Int) async -> Bool
+    private let now: () -> Date
 
     init(defaults: UserDefaults, enabled: @escaping () -> Bool, token: @escaping () -> String?, rotate: @escaping () -> Void,
-         userChanged: @escaping () -> Void, sync: @escaping (String) async -> DeviceOutcome) {
+         userChanged: @escaping () -> Void, sync: @escaping (String) async -> DeviceOutcome,
+         unregister: @escaping (Int) async -> Bool = { _ in true }, now: @escaping () -> Date = Date.init) {
         self.defaults = defaults
         self.enabled = enabled
         self.token = token
         self.rotate = rotate
         self.userChanged = userChanged
         self.sync = sync
+        self.unregister = unregister
+        self.now = now
     }
 
     /// Giriş kaydından önce çağrılır. Başka kullanıcı girdiyse önceki kullanıcının görünen bildirimleri ve push anahtarı gider,
@@ -188,6 +218,42 @@ final class PushLogin {
 
     func clearPending() {
         defaults.removeObject(forKey: pendingKey)
+    }
+
+    /// Sunucu satırı silmiş olabilir (röle `gone`, süresi dolan kayıt): bildirim açıksa kayıt günde en çok bir kez yinelenir.
+    /// Saat geri alındıysa da yenilenir
+    func refreshDue() -> Bool {
+        let last = defaults.object(forKey: registeredAtKey) as? Date ?? .distantPast
+        let since = now().timeIntervalSince(last)
+        return since < 0 || since >= refreshInterval
+    }
+
+    /// Her jeton geldiğinde çağrılır: değişmediyse ve zamanı gelmediyse sunucuya gidilmez
+    func refresh(token fresh: String) async {
+        guard enabled(), fresh != token() || refreshDue() else { return }
+        defaults.set(true, forKey: pendingKey)
+        switch await sync(fresh) {
+        case .ok, .unavailable: defaults.removeObject(forKey: pendingKey)
+        case .failed, .auth: break
+        }
+    }
+
+    /// Başarılı kayıttan sonra: zaman yazılır, bildirim yeniden açıldıysa bekleyen silme düşer
+    func registered() {
+        defaults.set(now(), forKey: registeredAtKey)
+        defaults.removeObject(forKey: pendingUnregisterKey)
+    }
+
+    /// Bekleme denemeden önce yazılır: ağ yoksa ya da süreç ölürse satır sonraki açılışta silinir
+    func queueUnregister(id: Int) async {
+        if id > 0 { defaults.set(id, forKey: pendingUnregisterKey) }
+        await retryUnregister()
+    }
+
+    func retryUnregister() async {
+        let id = defaults.integer(forKey: pendingUnregisterKey)
+        guard id > 0, await unregister(id), defaults.integer(forKey: pendingUnregisterKey) == id else { return }
+        defaults.removeObject(forKey: pendingUnregisterKey)
     }
 
     /// Yalnız gerçek çıkışta: bildirimi kapatmak son kullanıcıyı unutturmaz

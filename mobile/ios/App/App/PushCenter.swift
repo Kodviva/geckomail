@@ -34,13 +34,12 @@ private struct SystemPosting: NotificationPosting {
 }
 
 /// Kategoriler, bildirim eylemleri ve cihaz kaydı. `read`/`archive` arka planda yerel oturumla gider, tamamlama 25 sn içinde çağrılır.
-final class PushCenter: NSObject, UNUserNotificationCenterDelegate {
+final class PushCenter: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
     static let shared = PushCenter(actions: { AppServices.shared.api }, posting: SystemPosting(), limit: 25, locked: { AppServices.shared.lock.isLocked() })
 
     private static let readId = "gecko.action.read"
     private static let archiveId = "gecko.action.archive"
     private static let replyId = "gecko.action.reply"
-    private static let tokenWaitNs: UInt64 = 15_000_000_000
 
     private let actions: () -> ActionPoster
     private let posting: NotificationPosting
@@ -48,11 +47,16 @@ final class PushCenter: NSObject, UNUserNotificationCenterDelegate {
     private let locked: () -> Bool
     private let guardLock = NSLock()
     private var opens: [[String: Any]] = []
-    private var tokenWaiters: [(String?) -> Void] = []
+    private var tokenWaiters: [UUID: (String?) -> Void] = [:]
+    private let tokenWait: TimeInterval
+    private let requestToken: () -> Void
     /// Eklenti bağlıyken yeni açılış olayı
     var onOpen: (([String: Any]) -> Void)?
 
-    init(actions: @escaping () -> ActionPoster, posting: NotificationPosting, limit: TimeInterval, locked: @escaping () -> Bool) {
+    init(actions: @escaping () -> ActionPoster, posting: NotificationPosting, limit: TimeInterval, locked: @escaping () -> Bool, tokenWait: TimeInterval = 15,
+         requestToken: @escaping () -> Void = { UIApplication.shared.registerForRemoteNotifications() }) {
+        self.tokenWait = tokenWait
+        self.requestToken = requestToken
         self.actions = actions
         self.posting = posting
         self.limit = limit
@@ -107,22 +111,25 @@ final class PushCenter: NSObject, UNUserNotificationCenterDelegate {
         return true
     }
 
-    /// Süre dolarsa tamamlanır: istek arkada sürse de sistem beklemez
+    /// Süre dolarsa tamamlanır: istek arkada sürse de sistem beklemez. Görev grubu çocuklarını beklerdi, iptali dinlemeyen iş süreyi aşardı
     private func post(messageId: Int, action: String, id: String) async {
         let poster = actions()
         let posting = posting
         let limit = limit
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask {
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            let finish = Once { c.resume() }
+            let work = Task {
                 switch await poster.notifyAction(messageId: messageId, action: action) {
                 case .ok: posting.removeDelivered(id)
                 case .auth: posting.showRelogin()
                 case .failed: break
                 }
+                finish.run()
             }
-            group.addTask { try? await Task.sleep(nanoseconds: UInt64(limit * 1_000_000_000)) }
-            await group.next()
-            group.cancelAll()
+            DispatchQueue.global().asyncAfter(deadline: .now() + limit) {
+                work.cancel()
+                finish.run()
+            }
         }
     }
 
@@ -157,37 +164,47 @@ final class PushCenter: NSObject, UNUserNotificationCenterDelegate {
 
     // MARK: Cihaz belirteci
 
+    /// Süre dolunca nil: bekleme kaydı yanıtla ya da süreyle bir kez çıkar, APNs hiç dönmese de registerPush biter
     func deviceToken() async -> String? {
-        await withTaskGroup(of: String?.self) { group in
-            group.addTask { await self.awaitToken() }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: Self.tokenWaitNs)
-                return nil
-            }
-            let r = await group.next() ?? nil
-            group.cancelAll()
-            return r
-        }
-    }
-
-    private func awaitToken() async -> String? {
-        await withCheckedContinuation { c in
+        await withCheckedContinuation { (c: CheckedContinuation<String?, Never>) in
+            let id = UUID()
             guardLock.lock()
-            tokenWaiters.append { c.resume(returning: $0) }
+            tokenWaiters[id] = { c.resume(returning: $0) }
             guardLock.unlock()
-            DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
+            DispatchQueue.main.async(execute: requestToken)
+            DispatchQueue.global().asyncAfter(deadline: .now() + tokenWait) { [self] in
+                guardLock.lock()
+                let expired = tokenWaiters.removeValue(forKey: id)
+                guardLock.unlock()
+                expired?(nil)
+            }
         }
     }
 
-    /// AppDelegate'ten; nil: kayıt başarısız. Jeton değişti ve bildirim açıksa sunucuya yeniden bildirilir
+    /// AppDelegate'ten; nil: kayıt başarısız. Bildirim açıksa jeton değişince ya da günlük yenileme zamanı gelince sunucuya bildirilir
     func tokenArrived(_ token: String?) {
         guardLock.lock()
         let waiting = tokenWaiters
-        tokenWaiters = []
+        tokenWaiters = [:]
         guardLock.unlock()
-        waiting.forEach { $0(token) }
-        let s = AppServices.shared
-        guard let token, waiting.isEmpty, s.pushEnabled, token != s.pushToken else { return }
-        Task { await s.syncDevice(token: token) }
+        waiting.values.forEach { $0(token) }
+        guard let token, waiting.isEmpty else { return }
+        Task { await AppServices.shared.pushLogin.refresh(token: token) }
+    }
+}
+
+/// Tamamlama iki yoldan gelebilir (iş ve süre): yalnız ilki çalışır
+private final class Once {
+    private let lock = NSLock()
+    private var body: (() -> Void)?
+
+    init(_ body: @escaping () -> Void) { self.body = body }
+
+    func run() {
+        lock.lock()
+        let b = body
+        body = nil
+        lock.unlock()
+        b?()
     }
 }

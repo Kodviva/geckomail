@@ -68,11 +68,15 @@ dependencies {
 
 apply from: 'capacitor.build.gradle'
 
-try {
-    def servicesJSON = file('google-services.json')
-    if (servicesJSON.text) {
-        apply plugin: 'com.google.gms.google-services'
-    }
-} catch(Exception e) {
+def servicesJSON = file('google-services.json')
+if (servicesJSON.exists() && servicesJSON.text.trim()) {
+    apply plugin: 'com.google.gms.google-services'
+} else {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+    // Debug derlemesi bildirimsiz çalışır; bildirimsiz sürüm mağazaya çıkmasın
+    tasks.matching { it.name == 'preReleaseBuild' }.configureEach {
+        doFirst {
+            throw new GradleException('google-services.json yok: release derlemesi durduruldu')
+        }
+    }
 }

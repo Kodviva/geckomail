@@ -47,7 +47,10 @@ class MainActivity : BridgeActivity() {
         s.foreground = true
         s.lock.didBecomeForeground()
         s.sweepFiles()
-        s.scope.launch { s.registrar.retryPendingRegister() }
+        s.scope.launch {
+            s.registrar.retryPendingUnregister()
+            s.registrar.refreshIfDue()
+        }
     }
 
     override fun onStop() {

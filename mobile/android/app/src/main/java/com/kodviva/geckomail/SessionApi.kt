@@ -205,9 +205,21 @@ class SessionApi(
         return RegisterOutcome.Auth
     }
 
-    override suspend fun unregisterDevice(id: Long) {
-        val a = access(false) as? AccessOutcome.Ok ?: return
-        store.origin?.let { http.delete("$it/api/push/devices/$id", a.token) }
+    /** Oturum bittiyse satır onunla silinmiştir; 404 zaten yok demektir */
+    override suspend fun unregisterDevice(id: Long): Boolean {
+        val origin = store.origin ?: return true
+        var force = false
+        repeat(2) {
+            val access = when (val a = access(force)) {
+                is AccessOutcome.Ok -> a.token
+                AccessOutcome.Gone -> return true
+                AccessOutcome.Idle, AccessOutcome.Network -> return false
+            }
+            val r = http.delete("$origin/api/push/devices/$id", access) ?: return false
+            if (r.status != 401) return r.status in 200..299 || r.status == 404
+            force = true
+        }
+        return false
     }
 }
 

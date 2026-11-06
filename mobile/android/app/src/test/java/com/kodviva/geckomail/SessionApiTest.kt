@@ -96,6 +96,37 @@ class SessionApiTest {
         assertEquals(1, signedOut)
     }
 
+    @Test fun unregisterReportsWhetherServerWasReached() = runTest {
+        store.tok = "gms_x"
+        val cases = listOf<Pair<HttpReply?, Boolean>>(HttpReply(204, "") to true, HttpReply(404, "") to true, HttpReply(502, "") to false, null to false)
+        for ((reply, done) in cases) {
+            http.reply = { r -> if (r.url.endsWith("/api/mobile/token")) tokenReply() else reply }
+            assertEquals(done, api.unregisterDevice(5))
+        }
+    }
+
+    @Test fun unregisterRefreshesExpiredAccessOnce() = runTest {
+        store.tok = "gms_x"
+        var deletes = 0
+        http.reply = { r ->
+            when {
+                r.url.endsWith("/api/mobile/token") -> tokenReply()
+                deletes++ == 0 -> HttpReply(401, "")
+                else -> HttpReply(204, "")
+            }
+        }
+        assertTrue(api.unregisterDevice(5))
+        assertEquals(2, deletes)
+    }
+
+    @Test fun unregisterDoneWhenSessionGoneButPendingWhenIdle() = runTest {
+        store.tok = "gms_x"
+        http.reply = { HttpReply(401, """{"reason":"idle"}""") }
+        assertFalse(api.unregisterDevice(5))
+        http.reply = { HttpReply(401, "") }
+        assertTrue(api.unregisterDevice(5))
+    }
+
     @Test fun networkErrorKeepsSession() = runTest {
         store.tok = "gms_x"
         http.reply = { null }
