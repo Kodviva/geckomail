@@ -18,7 +18,7 @@ export const READABLE_PREFS = new Set([
   'notifyQuiet', 'notifyQuietStart', 'notifyQuietEnd', 'notifyVip', 'authBanPerDay', 'require2fa', AUTOMATION_HOLD_PREF, 'smimeRevocation'
 ])
 
-/** Ayarlar ekranının yazabildiği tercihler: iç durum (watermark, biyometrik/senkron blob'ları,
+/** Ayarlar ekranının yazabildiği tercihler: iç durum (biyometrik/senkron blob'ları,
  *  klasör önbelleği) renderer'dan ezilemez */
 export const WRITABLE_PREFS = new Set([
   'backfillTarget', 'notifyScope', 'pollCadenceSec', 'trustedServer', 'vault_autolock', 'autoBackup', 'bodyPrefetch',

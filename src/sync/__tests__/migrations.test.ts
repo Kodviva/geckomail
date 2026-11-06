@@ -163,7 +163,7 @@ describe('migration güvenliği', () => {
     db.close()
   })
   it('028 applies on a 025 database', () => {
-    expect(MIGRATIONS).toHaveLength(33)
+    expect(MIGRATIONS).toHaveLength(34)
     const path = join(dir, 'geckomail.db')
     const db = new Database(path)
     migrate(db, dir, path, MIGRATIONS.slice(0, 25))

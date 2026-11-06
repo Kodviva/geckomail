@@ -1,9 +1,10 @@
 import PostalMime from 'postal-mime'
-import { createHash } from 'crypto'
-import { mkdirSync, writeFileSync } from 'fs'
+import { createHash, createHmac } from 'crypto'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join, extname } from 'path'
 import type { ImapFlow } from 'imapflow'
 import type { MessageRow } from '../shared/rpc'
+import { SEALED_ATTACHMENT_SUFFIX } from '../shared/attachmentFiles'
 import { isCalendarAttachment } from '../shared/pim'
 import { htmlToText } from '../shared/searchQuery'
 import type { AccountRow, Queries } from './db/queries'
@@ -12,8 +13,12 @@ import { STREAM_HARD_LIMIT } from './smime/limits'
 import { classifyRaw, classifyStructure } from './smime/mime'
 import type { SigEvaluator } from './smime/open'
 import { closedSmimeEvaluator, isEncryptedRoot, markUnsupported, processSignedFetch } from './smime/receive'
+import { readSealed, writeSealed } from './smime/sealedFile'
+import { getVaultKey, isVaultUnlocked } from './vault/state'
 
 const WHOLE_FETCH_LIMIT = 1_000_000 // 1MB altı: tüm kaynak tek seferde
+/** Kasa ekinin kullanıcı açınca çözülen kopyaları: kilitte ve açılışta silinir */
+const VAULT_OPEN_DIR = 'vault-open'
 
 /** Akış sınırı aşıldı: S/MIME iletisi eksik baytla açılmaz, durum notu alır */
 export class BodyTooLargeError extends Error {
@@ -45,13 +50,52 @@ function safeExt(filename: string | null): string {
   return /^\.[a-zA-Z0-9]{1,8}$/.test(e) ? e.toLowerCase() : ''
 }
 
-function writeAttachmentFile(dir: string, accountId: number, content: Buffer, filename: string | null): string {
+function writeAttachmentFile(dir: string, accountId: number, content: Buffer, filename: string | null, sealed = false): string {
   const sub = join(dir, String(accountId))
   mkdirSync(sub, { recursive: true })
+  if (sealed) {
+    const key = getVaultKey()
+    if (!key) throw new Error(t('sync.vault.locked'))
+    // düz özet adı içeriği ele verirdi (bilinen dosya sınaması), uzantı da türü
+    const path = join(sub, createHmac('sha256', key).update(content).digest('hex').slice(0, 32) + SEALED_ATTACHMENT_SUFFIX)
+    writeSealed(path, content)
+    return path
+  }
   const name = createHash('sha256').update(content).digest('hex').slice(0, 32) + safeExt(filename)
   const p = join(sub, name)
   writeFileSync(p, content)
   return p
+}
+
+/** Önbellekteki ekin baytları: mühürlüyse kasa açık olmalı */
+export function readStoredAttachment(path: string): Buffer {
+  if (!path.endsWith(SEALED_ATTACHMENT_SUFFIX)) return readFileSync(path)
+  if (!isVaultUnlocked()) throw new Error(t('sync.vault.locked'))
+  return readSealed(path)
+}
+
+/** İşletim sisteminde açmak ya da indirmek için düz kopya. Yalnız kullanıcı isteyince; önbelleğe bağlanmaz */
+export function openSealedAttachment(path: string, attachDir: string, att: { id: number; filename: string | null }): string {
+  const dir = join(attachDir, VAULT_OPEN_DIR)
+  mkdirSync(dir, { recursive: true })
+  const out = join(dir, `${att.id}${safeExt(att.filename)}`)
+  writeFileSync(out, readStoredAttachment(path), { mode: 0o600 })
+  return out
+}
+
+export function clearVaultOpen(attachDir: string): void {
+  rmSync(join(attachDir, VAULT_OPEN_DIR), { recursive: true, force: true })
+}
+
+/** Kasadan çıkan hesap: mühürlü ekler hesabın düz gövdeleriyle aynı kurala döner, kasa kilitliyken de okunur */
+export function unsealAccountAttachments(q: Queries, accountId: number, attachDir: string): void {
+  const sealed = new Set<string>()
+  for (const a of q.sealedAttachmentsOf(accountId)) {
+    if (!existsSync(a.disk_path)) continue
+    q.setAttachmentPath(a.id, writeAttachmentFile(attachDir, accountId, readStoredAttachment(a.disk_path), a.filename))
+    sealed.add(a.disk_path)
+  }
+  for (const p of sealed) rmSync(p, { force: true })
 }
 
 const P7_SIGNATURE = /^application\/(x-)?pkcs7-signature$/
@@ -123,7 +167,7 @@ async function parseAndSave(q: Queries, account: AccountRow, message: BodyMessag
     for (const a of parsed.attachments ?? []) {
       // postal-mime metin eklerini Uint8Array verir: String() onları "66,69,71" diye yazardı
       const content = typeof a.content === 'string' ? Buffer.from(a.content) : Buffer.from(ArrayBuffer.isView(a.content) ? a.content : new Uint8Array(a.content))
-      const diskPath = content.length ? writeAttachmentFile(attachDir, account.id, content, a.filename ?? null) : null
+      const diskPath = content.length ? writeAttachmentFile(attachDir, account.id, content, a.filename ?? null, !!account.secure) : null
       q.insertAttachment({
         messageId: message.id,
         partId: null,
@@ -322,7 +366,7 @@ export async function fetchAttachmentPart(
   attachDir: string
 ): Promise<string> {
   const buf = await downloadAttachmentPart(message, attachment, client)
-  const p = writeAttachmentFile(attachDir, account.id, buf, attachment.filename)
+  const p = writeAttachmentFile(attachDir, account.id, buf, attachment.filename, !!account.secure)
   q.setAttachmentPath(attachment.id, p)
   return p
 }

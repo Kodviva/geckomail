@@ -1,4 +1,5 @@
 import { unlinkSync } from 'fs'
+import { clearVaultOpen } from './bodyFetch'
 import type { DraftOut, RpcEventName, RpcEvents, SessionUser } from '../shared/rpc'
 import type { Queries } from './db/queries'
 import type { Scheduler } from './scheduler'
@@ -557,7 +558,7 @@ export class RpcHub {
     }
   }
 
-  // Kasayı kilitle + kasa hesaplarının diske inmiş eklerini sil (kilitli cihazda düz ek kalmasın).
+  // Kasayı kilitle + kasa hesaplarının düz ek kopyalarını sil (kilitli cihazda düz ek kalmasın); mühürlü önbellek kalır.
   lockVaultNow(): void {
     lockVault(this.deps.q, this.deps.creds)
     // kilitliyken arka planda yenilenmez: açık (doğrulanmış) oturumları da kapat
@@ -569,6 +570,7 @@ export class RpcHub {
         /* dosya zaten yoksa/erişilemezse geç */
       }
     }
+    clearVaultOpen(this.deps.attachDir)
   }
 
   // dış sinyalle (uyku / ekran kilidi) kasayı kilitle — açıksa ve ayar kapalı değilse.

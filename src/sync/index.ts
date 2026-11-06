@@ -56,4 +56,6 @@ if (process.env.GECKO_SMOKE_SMIME === '1') {
   )
 }
 bridge.onSignal((s) => engine.signal(s))
+// ana süreç çıkarken sync.kill(): gönderilmekte olan ileti biter, DB düzgün kapanır (Windows'ta sinyal yoktur, açılış belirsiz sayar)
+process.once('SIGTERM', () => void engine.stop().finally(() => process.exit(0)))
 bridge.onRpcPort((p) => engine.hub.openSession(fromMessagePortMain(p)))

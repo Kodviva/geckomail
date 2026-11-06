@@ -35,11 +35,12 @@ import migration031 from './migrations/031_calendar.sql?raw'
 import migration032 from './migrations/032_smime.sql?raw'
 import migration033 from './migrations/033_mobile.sql?raw'
 import migration034 from './migrations/034_smime_crl_sets.sql?raw'
+import migration035 from './migrations/035_rules_pending.sql?raw'
 
 export const MIGRATIONS = [
   migration001, migration002, migration003, migration004, migration005, migration006, migration007, migration008,
   migration009, migration010, migration011, migration012, migration013, migration014, migration015, migration016, migration017, migration018,
-  migration019, migration020, migration021, migration022, migration023, migration024, migration025, migration026, migration028, migration029, migration030, migration031, migration032, migration033, migration034
+  migration019, migration020, migration021, migration022, migration023, migration024, migration025, migration026, migration028, migration029, migration030, migration031, migration032, migration033, migration034, migration035
 ]
 
 const SNAPSHOT_KEEP = 3

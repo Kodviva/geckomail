@@ -1,13 +1,14 @@
 import { createHmac } from 'crypto'
 import { rmSync } from 'fs'
 import type { DraftOut, FolderKind } from '../shared/rpc'
-import type { AccountRow, OpRow, Queries } from './db/queries'
+import type { AccountRow, FolderRow, OpRow, Queries } from './db/queries'
+import { OPTIMISTIC_HIDE_OPS } from './db/q/types'
 import type { Scheduler } from './scheduler'
 import { fetchBody } from './bodyFetch'
 import { classifyError } from './imapClient'
-import { pollFolder } from './imapPoll'
+import { ensureFolders, invalidateFolderList, pollFolder } from './imapPoll'
 import { movedArrivals } from './movedArrivals'
-import { PoolDeferred } from './net/sessionPool'
+import { LoginDeniedError, OfflineError, PoolDeferred } from './net/sessionPool'
 import { prepareSmimeParts } from './smime/build'
 import { SmimeBlockedError, SmimeLockedError, SmimePendingError, SmimeNoIdentityError } from './smime/errors'
 import type { SigEvaluator } from './smime/open'
@@ -22,6 +23,9 @@ const MAX_ATTEMPTS = 5
 const CRL_PENDING_WAIT_MS = 60_000
 const DRAIN_INTERVAL_MS = 3000
 const WEBHOOK_CONCURRENCY = 4 // CFG.pollSlotsPerHost emsaliyle aynı — küçük ofis NAT'ı gibi görün
+const OFFLINE_DEFER_MS = 30_000 // internet gelince scheduler da aynı aralıkta yoklar
+const LOGIN_DENIED_DEFER_MS = 5 * 60_000
+const STOP_DRAIN_MS = 8000 // sunucu 10 sn içinde kapanmazsa zorla çıkar
 
 export interface OpQueueEvents {
   emitOpFailed(accountId: number, kind: string, error: string, draft?: DraftOut, opId?: number, partial?: boolean, senderId?: number): void
@@ -92,6 +96,8 @@ const WEBHOOK_TIMEOUT_MS = 10_000
 export class OpQueue {
   private timer: ReturnType<typeof setInterval> | null = null
   private draining = false
+  private stopping = false
+  private turn: Promise<void> | null = null
   private smtpBusy = false
   private webhookInFlight = 0
   /** anahtar op + Message-ID: op kimliği yeniden kullanılır (AUTOINCREMENT yok), yeni ileti eski ilerlemeyi devralmaz */
@@ -110,12 +116,19 @@ export class OpQueue {
   ) {}
 
   start(): void {
-    this.q.resetRunningOps()
+    this.q.resetRunningOps(t('sync.op.sendUncertain'))
     this.timer = setInterval(() => void this.drain(), DRAIN_INTERVAL_MS)
   }
 
-  stop(): void {
+  /** Yeni tur başlamaz, başlamamış op sıraya döner, gönderilmekte olan biter: DB kapanınca yarım kalan gönderim açılışta
+   *  belirsiz sayılırdı. Süre dolarsa beklemeyi bırakır (satır 'running' kalır, açılış karar verir) */
+  async stop(waitMs = STOP_DRAIN_MS): Promise<void> {
+    this.stopping = true
     if (this.timer) clearInterval(this.timer)
+    if (!this.turn) return
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    await Promise.race([this.turn.catch(() => {}), new Promise<void>((r) => (timeout = setTimeout(r, waitMs)))])
+    clearTimeout(timeout)
   }
 
   kick(): void {
@@ -123,67 +136,92 @@ export class OpQueue {
   }
 
   private async drain(): Promise<void> {
-    if (this.draining) return
+    if (this.draining || this.stopping) return
     this.draining = true
+    this.turn = this.drainTurn()
     try {
-      this.flushHeldSent()
-      // sahiplenilen satır çalıştırılır ya da sıraya geri verilir: webhook şeridi boş yuva kadar alır
-      const ops = this.q.claimDueOps(Date.now(), 30)
-      let webhookOps: OpRow[]
-      try {
-        webhookOps = this.q.claimDueWebhookOps(Date.now(), Math.max(0, WEBHOOK_CONCURRENCY - this.webhookInFlight))
-      } catch (e) {
-        this.q.opRelease(ops.map((o) => o.id)) // 'running' kalırlarsa yeniden başlatmaya dek işlenmezler
-        throw e
-      }
-      if (!ops.length && !webhookOps.length) return
-      const smtpOps = ops.filter((o) => o.kind === 'smtp_send')
-      const imapOps = ops.filter((o) => o.kind !== 'smtp_send')
-
-      const byAccount = new Map<number, OpRow[]>()
-      for (const op of imapOps) {
-        const list = byAccount.get(op.account_id) ?? []
-        list.push(op)
-        byAccount.set(op.account_id, list)
-      }
-      const jobs: Promise<void>[] = []
-      for (const [accountId, list] of byAccount) {
-        jobs.push(
-          this.scheduler
-            .enqueueInteractive(accountId, async (client) => {
-              for (const op of list) await this.runImapOp(client, op)
-            })
-            .catch((e) => {
-              // governor ertelemesi (soğuma/hız): deneme hakkı yakmadan bekleme sonrasına at
-              if (e instanceof PoolDeferred) {
-                for (const op of list) this.q.opDefer(op.id, e.message, Date.now() + Math.max(5000, e.waitMs))
-                return
-              }
-              // bağlantı kurulamadı: tüm grubun denemesini ertele
-              for (const op of list) this.retryOrFail(op, String((e as Error)?.message ?? e))
-            })
-        )
-      }
-      if (smtpOps.length && !this.smtpBusy) {
-        this.smtpBusy = true
-        jobs.push(
-          (async () => {
-            for (const op of smtpOps) await this.runSmtpOp(op)
-          })().finally(() => (this.smtpBusy = false))
-        )
-      } else {
-        this.q.opRelease(smtpOps.map((o) => o.id))
-      }
-      // Webhook'lar: IMAP scheduler'dan ve smtpBusy'den bağımsız üçüncü şerit — hesaba
-      // bağlı değil, eşzamanlı teslimat gerekir (hesap-başına-seri değil).
-      for (const op of webhookOps) {
-        this.webhookInFlight++
-        jobs.push(this.runWebhookOp(op).finally(() => this.webhookInFlight--))
-      }
-      await Promise.allSettled(jobs)
+      await this.turn
     } finally {
       this.draining = false
+      this.turn = null
     }
+  }
+
+  /** Kapanışta sıradaki op başlamaz. true: `list`in `i`. satırından sonrası sıraya döndü */
+  private haltAt(list: OpRow[], i: number): boolean {
+    if (!this.stopping) return false
+    this.q.opRelease(list.slice(i).map((o) => o.id))
+    return true
+  }
+
+  private async drainTurn(): Promise<void> {
+    this.flushHeldSent()
+    // sahiplenilen satır çalıştırılır ya da sıraya geri verilir: webhook şeridi boş yuva kadar alır
+    const ops = this.q.claimDueOps(Date.now(), 30)
+    let webhookOps: OpRow[]
+    try {
+      webhookOps = this.q.claimDueWebhookOps(Date.now(), Math.max(0, WEBHOOK_CONCURRENCY - this.webhookInFlight))
+    } catch (e) {
+      this.q.opRelease(ops.map((o) => o.id)) // 'running' kalırlarsa yeniden başlatmaya dek işlenmezler
+      throw e
+    }
+    if (!ops.length && !webhookOps.length) return
+    const smtpOps = ops.filter((o) => o.kind === 'smtp_send')
+    const imapOps = ops.filter((o) => o.kind !== 'smtp_send')
+
+    const byAccount = new Map<number, OpRow[]>()
+    for (const op of imapOps) {
+      const list = byAccount.get(op.account_id) ?? []
+      list.push(op)
+      byAccount.set(op.account_id, list)
+    }
+    const jobs: Promise<void>[] = []
+    for (const [accountId, list] of byAccount) {
+      jobs.push(
+        this.scheduler
+          .enqueueInteractive(accountId, async (client) => {
+            for (const [i, op] of list.entries()) {
+              if (this.haltAt(list, i)) break
+              await this.runImapOp(client, op)
+            }
+          })
+          .catch((e) => {
+            // governor ertelemesi (soğuma/hız): deneme hakkı yakmadan bekleme sonrasına at
+            if (e instanceof PoolDeferred) {
+              for (const op of list) this.q.opDefer(op.id, e.message, Date.now() + Math.max(5000, e.waitMs))
+              return
+            }
+            // internet yok ya da hesap oturum açamıyor (parola bekleniyor, kasa kilitli): op'un hatası değil, deneme yanmaz
+            if (e instanceof OfflineError || e instanceof LoginDeniedError) {
+              const wait = e instanceof OfflineError ? OFFLINE_DEFER_MS : LOGIN_DENIED_DEFER_MS
+              for (const op of list) this.q.opDefer(op.id, e.message, Date.now() + wait)
+              return
+            }
+            // bağlantı kurulamadı: tüm grubun denemesini ertele
+            for (const op of list) this.retryOrFail(op, String((e as Error)?.message ?? e))
+          })
+      )
+    }
+    if (smtpOps.length && !this.smtpBusy) {
+      this.smtpBusy = true
+      jobs.push(
+        (async () => {
+          for (const [i, op] of smtpOps.entries()) {
+            if (this.haltAt(smtpOps, i)) break
+            await this.runSmtpOp(op)
+          }
+        })().finally(() => (this.smtpBusy = false))
+      )
+    } else {
+      this.q.opRelease(smtpOps.map((o) => o.id))
+    }
+    // Webhook'lar: IMAP scheduler'dan ve smtpBusy'den bağımsız üçüncü şerit — hesaba
+    // bağlı değil, eşzamanlı teslimat gerekir (hesap-başına-seri değil).
+    for (const op of webhookOps) {
+      this.webhookInFlight++
+      jobs.push(this.runWebhookOp(op).finally(() => this.webhookInFlight--))
+    }
+    await Promise.allSettled(jobs)
   }
 
   private async runImapOp(client: import('imapflow').ImapFlow, op: OpRow): Promise<void> {
@@ -212,12 +250,14 @@ export class OpQueue {
         }
         case 'trash': {
           const p = payload as TrashPayload
-          const trash = this.q.getFolderByKind(op.account_id, 'trash')
+          // kalıcı silme yalnız ileti zaten Çöp Kutusu'ndaysa: klasör bulunamadı diye posta yok olmaz
+          const inTrash = this.q.getFolders(op.account_id).find((f) => f.path === p.folderPath)?.kind === 'trash'
+          const trash = inTrash ? null : await this.trashFolder(client, op.account_id)
           const lock = await client.getMailboxLock(p.folderPath)
           this.assertUidValidity(client, p, lock)
           try {
             const range = p.uids.join(',')
-            if (trash && trash.path !== p.folderPath) {
+            if (trash) {
               // ImapFlow: MOVE varsa MOVE, yoksa COPY+STORE+EXPUNGE kendisi uygular
               await client.messageMove(range, trash.path, { uid: true })
             } else {
@@ -338,6 +378,24 @@ export class OpQueue {
     }
     // op'un try'ının dışında; hata yutulur: yukarı çıksa grubun tamamı (bitenler dahil) yeniden denenirdi
     if (movedTo) await this.syncMoveTarget(client, op.account_id, movedTo).catch(() => {})
+  }
+
+  /** Çöp Kutusu: yerelde yoksa önce klasör listesi tazelenir (yerel adlı ya da sonradan açılmış olabilir), sonra Archive gibi
+   *  oluşturulur. Oluşturulamazsa hata op'a döner: yeniden denenir, kalıcı silmeye düşmez */
+  private async trashFolder(client: import('imapflow').ImapFlow, accountId: number): Promise<FolderRow> {
+    const known = this.q.getFolderByKind(accountId, 'trash')
+    if (known) return known
+    const row = this.q.getAccountRow(accountId)
+    if (row) {
+      invalidateFolderList(this.q, accountId)
+      await ensureFolders(this.q, row, client)
+      const listed = this.q.getFolderByKind(accountId, 'trash')
+      if (listed) return listed
+    }
+    const made = await client.mailboxCreate('Trash')
+    const created = this.q.getFolderById(this.q.upsertFolder(accountId, made.path, 'trash'))
+    if (!created) throw new Error(t('sync.op.folderCreateFailed', { folder: 'Trash' }))
+    return created
   }
 
   /** Taşınan ileti hedefte yeni posta sayılmaz. Kural taşıması da kaydolur: hedef izleniyorsa kural orada ikinci kez çalışırdı.
@@ -543,7 +601,12 @@ export class OpQueue {
     }
   }
 
-  private cleanupOutbox(attachments: OutboxAttachment[]): void {
+  /** Eski başarısız op'lar silinir; gönderimin ekleri satırla birlikte gider */
+  pruneFailedOps(before: number): void {
+    this.cleanupOutbox(this.q.pruneFailedOps(before).outboxFiles.map((path) => ({ path })))
+  }
+
+  private cleanupOutbox(attachments: { path: string }[]): void {
     for (const a of attachments) {
       try {
         rmSync(a.path)
@@ -586,7 +649,8 @@ export class OpQueue {
           /* payload bozuksa sessizce geç */
         }
       }
-      // gönderim kalıcı olarak başarısızsa taslağı arayüze geri ver (ekler diskte kalır ama taslağa bağlanamaz)
+      // gönderim kalıcı olarak başarısızsa taslağı arayüze geri ver. Ekler satır silinene dek diskte kalır: yeniden deneme
+      // onlarla gider, iptal ve 30 günlük budama siler
       let draft: DraftOut | undefined
       let senderId: number | undefined
       if (op.kind === 'smtp_send') {
@@ -596,14 +660,22 @@ export class OpQueue {
           // şifreli taslak olaya hiç girmez: gönderen getOpDraft ile alır
           // ana parça gitti: taslak "gönderilmedi" diye dönerse yeniden gönderim To/Cc'ye ikinci kez ulaşır
           if (!p.smime?.encrypt && !partial) draft = p.draft
-          this.cleanupOutbox(p.attachments ?? [])
         } catch {
           /* payload bozuksa taslak kurtarılamaz */
         }
       }
       this.ev.emitOpFailed(op.account_id, op.kind, error, draft, op.id, partial, senderId)
       // kalıcı hata: yerel iyimser durum sunucudan sapmış olabilir → poll uzlaştırır.
-      // trash başarısızlığında yerel satırlar silinmişti; klasörü sıfırla ki yeniden çekilsin
+      // ileti sunucuda yerinde: gizli kalırsa bir daha görünmez
+      if (OPTIMISTIC_HIDE_OPS.has(op.kind)) {
+        try {
+          const p = JSON.parse(op.payload_json) as TrashPayload
+          this.q.unhideByFolderUids(op.account_id, p.folderPath, p.uids)
+        } catch {
+          /* payload bozuksa satır sıradaki tam senkronda düzelir */
+        }
+      }
+      // trash başarısızlığında klasörü sıfırla ki yeniden çekilsin
       if (op.kind === 'trash') {
         try {
           const p = JSON.parse(op.payload_json) as TrashPayload

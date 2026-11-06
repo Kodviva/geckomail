@@ -14,9 +14,6 @@ export interface RuleFiredEvent {
   messageId: number
 }
 
-// prefs anahtarı: mevcut `folders_listed_${id}` deseniyle aynı — yeni tablo gerekmez.
-const watermarkKey = (accountId: number): string => `rules_watermark:${accountId}`
-
 /** Bir turda işlenen en fazla ileti; dolu tur dönerse kalanı için yeniden çağrılır */
 export const RULES_BATCH = 500
 
@@ -24,7 +21,7 @@ export const RULES_BATCH = 500
  *  İzlenen klasör satırları süzüldüğü için tur doluluğu `scanned` ile anlaşılır */
 export type RulesBatchHandler = (rows: MessageRow[], reasons: ReadonlyMap<number, 'rule' | 'rule-urgent'>, scanned: number) => void
 
-/** onBatch işlem bittikten hemen sonra çağrılır: sonraki adımlar patlasa da watermark'ı geçen parti kaybolmaz */
+/** onBatch işlem bittikten hemen sonra çağrılır: sonraki adımlar patlasa da işaretlenen parti kaybolmaz */
 export async function runRulesForAccount(
   q: Queries,
   opq: OpQueue,
@@ -32,9 +29,7 @@ export async function runRulesForAccount(
   onMatched: (ev: RuleFiredEvent) => void,
   onBatch?: RulesBatchHandler
 ): Promise<void> {
-  const key = watermarkKey(accountId)
-  const since = Number(q.prefGet(key) ?? 0)
-  const rows = q.messagesSince(accountId, since, RULES_BATCH, q.sieveWatchedPaths(accountId))
+  const rows = q.pendingRuleMessages(accountId, RULES_BATCH, q.sieveWatchedPaths(accountId))
   if (!rows.length) return
 
   const rules = q.getActiveRulesFor(accountId)
@@ -45,7 +40,7 @@ export async function runRulesForAccount(
   const reasons = new Map<number, 'rule' | 'rule-urgent'>()
   const passed: MessageRow[] = []
 
-  // Atomik: eşleştir + kuyruğa al + logla + watermark ilerlet hep birlikte ya da hiç.
+  // Atomik: eşleştir + kuyruğa al + logla + işareti kaldır hep birlikte ya da hiç.
   // Çökme = aynı batch bir sonraki turda yeniden işlenir — çift-tetikleme riski yok.
   q.tx(() => {
     for (const row of rows) {
@@ -84,7 +79,7 @@ export async function runRulesForAccount(
         trigger(m.ruleId, m.ruleName, inProcessLocale(() => actionLabel(m.action)))
       }
     }
-    q.prefSet(key, String(rows[rows.length - 1].id))
+    q.markRulesProcessed(accountId, rows[rows.length - 1].id)
   })
 
   onBatch?.(passed, reasons, rows.length)

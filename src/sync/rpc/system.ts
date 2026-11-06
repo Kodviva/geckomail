@@ -6,6 +6,7 @@ import {
   setBiometricBlob, unlockVault, unlockVaultAsync, verifyVaultPassphraseAsync
 } from '../vault/manager'
 import { checkVaultPassphrase, clearVaultPassphraseFails } from '../vault/throttle'
+import { unsealAccountAttachments } from '../bodyFetch'
 import { parseVipList } from '../notifyPolicy'
 import Database from 'better-sqlite3'
 import { MIGRATIONS } from '../db'
@@ -39,7 +40,7 @@ export const systemHandlers: Record<string, Handler> = {
   async setPrefs(s: RpcSession, params: unknown) {
     const { q, scheduler } = s.deps
     const { values } = params as { values: Record<string, string> }
-    // yalnız ayarlar ekranının anahtarları: iç durum (watermark, biyometrik/senkron blob'ları,
+    // yalnız ayarlar ekranının anahtarları: iç durum (biyometrik/senkron blob'ları,
     // klasör önbelleği) renderer'dan ezilemez; kişisel bildirim tercihleri setMyPrefs'ten
     for (const [k, v] of Object.entries(values)) {
       if (USER_PREF_KEYS.has(k)) throw new Error(t('sync.pref.useMyPrefs'))
@@ -212,6 +213,7 @@ export const systemHandlers: Record<string, Handler> = {
       q.updateAccountFields(accountId, { password_enc: Buffer.from(enc) })
       q.convertAccountToLive(accountId)
       q.setAccountSecureFlag(accountId, false)
+      unsealAccountAttachments(q, accountId, s.deps.attachDir)
     }
     s.broadcast('messages:changed', { accountId: null })
     return null

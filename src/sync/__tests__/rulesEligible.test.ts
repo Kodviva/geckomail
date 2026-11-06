@@ -36,19 +36,19 @@ describe('kural uygunluğu (rules_eligible)', () => {
   it('varsayılan (ilk senkron / backfill) kurallara girmez', () => {
     q.upsertHeader(header(1))
     q.upsertHeader(header(2))
-    expect(q.messagesSince(accountId, 0, 100)).toHaveLength(0)
+    expect(q.pendingRuleMessages(accountId, 100)).toHaveLength(0)
   })
 
   it('yalnız yeni-mail yolundan gelenler kurallara girer', () => {
     q.upsertHeader(header(1)) // eski
     q.upsertHeader({ ...header(3), rulesEligible: true }) // yeni gelen
-    const rows = q.messagesSince(accountId, 0, 100)
+    const rows = q.pendingRuleMessages(accountId, 100)
     expect(rows.map((r) => r.uid)).toEqual([3])
   })
 
   it('var olan satır güncellenirken uygunluğu değişmez', () => {
     q.upsertHeader(header(5))
     q.upsertHeader({ ...header(5), seen: true, rulesEligible: true })
-    expect(q.messagesSince(accountId, 0, 100)).toHaveLength(0)
+    expect(q.pendingRuleMessages(accountId, 100)).toHaveLength(0)
   })
 })

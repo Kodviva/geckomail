@@ -1,5 +1,6 @@
 // Sorgular — Hesaplar, kasa bayrağı, gözlemlenebilirlik, işlem/yedek yardımcıları ve tercihler.
 import type { AccountInfo, AccountStatus } from '../../../shared/rpc'
+import { SEALED_ATTACHMENT_SUFFIX } from '../../../shared/attachmentFiles'
 import { foldForIndex } from '../../../shared/searchQuery'
 import { SIEVE_PUBLIC_DETAILS } from '../../../shared/sieve'
 import { decryptText, encryptText } from '../../vault/crypto'
@@ -30,14 +31,14 @@ export function accountsQueries(c: QCtx) {
       c.q.refreshSecureAccounts()
     },
 
-    // Kasa hesaplarının diske inmiş ek dosya yollarını döndürür ve DB kaydını temizler (çağıran
-    // dosyaları siler). Kilitleme anında kritik eklerin diskte düz kalmasını önler.
+    // Kasa hesaplarının diske düz inmiş ek dosya yollarını döndürür ve DB kaydını temizler (çağıran
+    // dosyaları siler). Kilitleme anında kritik eklerin diskte düz kalmasını önler; mühürlüler kalır.
     takeSecureAttachmentPaths(): string[] {
       const rows = prep(
         `SELECT a.id, a.disk_path FROM attachments a
          JOIN messages m ON m.id = a.message_id
          JOIN accounts ac ON ac.id = m.account_id
-         WHERE ac.secure = 1 AND a.disk_path IS NOT NULL`
+         WHERE ac.secure = 1 AND a.disk_path IS NOT NULL AND a.disk_path NOT LIKE '%${SEALED_ATTACHMENT_SUFFIX}'`
       ).all() as { id: number; disk_path: string }[]
       if (rows.length) {
         const upd = prep(`UPDATE attachments SET disk_path = NULL, fetched_at = NULL WHERE id = ?`)
@@ -49,6 +50,14 @@ export function accountsQueries(c: QCtx) {
     },
 
     // canlı→kasa: hesabın mevcut düz içeriğini/gövdesini kasa anahtarıyla şifreler, enc=1, FTS'ten çıkarır.
+    /** Hesabın mühürlü önbellek ekleri: kasadan çıkan hesap bunları düz yazar */
+    sealedAttachmentsOf(accountId: number): { id: number; disk_path: string; filename: string | null }[] {
+      return prep(
+        `SELECT a.id, a.disk_path, a.filename FROM attachments a JOIN messages m ON m.id = a.message_id
+         WHERE m.account_id = ? AND a.disk_path LIKE '%${SEALED_ATTACHMENT_SUFFIX}'`
+      ).all(accountId) as { id: number; disk_path: string; filename: string | null }[]
+    },
+
     convertAccountToSecure(accountId: number): void {
       const key = getVaultKey()
       if (!key) throw new Error(t('sync.vault.locked'))
@@ -317,7 +326,7 @@ export function accountsQueries(c: QCtx) {
           }
         }
         prep(`DELETE FROM op_queue WHERE account_id = ?`).run(id)
-        prep(`DELETE FROM prefs WHERE key IN (?, ?)`).run(`rules_watermark:${id}`, `folders_listed_${id}`)
+        prep(`DELETE FROM prefs WHERE key = ?`).run(`folders_listed_${id}`)
         for (const f of prep(`SELECT id FROM folders WHERE account_id = ?`).all(id) as { id: number }[]) {
           prep(`DELETE FROM prefs WHERE key = ?`).run(`full_uid_check_${f.id}`)
         }

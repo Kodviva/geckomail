@@ -15,7 +15,7 @@ export interface NewMailCtx {
 }
 
 export async function notifyNewMail(ctx: NewMailCtx, accountId: number): Promise<void> {
-  // dolu tur: büyük varışın kalanı bir sonraki postayı beklemesin. Watermark ilerlediği için döngü biter
+  // dolu tur: büyük varışın kalanı bir sonraki postayı beklemesin. İşlenen satırın işareti kalktığı için döngü biter
   for (;;) {
     let rows: MessageRow[] = []
     let reasons: ReadonlyMap<number, 'rule' | 'rule-urgent'> = new Map()

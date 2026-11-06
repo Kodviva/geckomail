@@ -1,10 +1,10 @@
 // RPC — Davetler. Posta yoluyla gelen takvim nesnesi alım kapısından (`apply.ts`) geçmez ve göndereni herkes olabilir: boyut ve biçim denetiminden
 // sonraki ilk iş `gateCalendars`tır, ayrıştırıcı ana iş parçacığında kapıdan önce çalışmaz. Hiçbir şey tıklamasız uygulanmaz: `getInvite` yalnız okur.
-import { readFileSync, statSync } from 'fs'
+import { existsSync, readFileSync, statSync } from 'fs'
 import type { InviteChange, InviteInfo, InvitePartstat, WriteResult } from '../../shared/pim'
 import { isCalendarAttachment } from '../../shared/pim'
 import { getLocale, t, tFor } from '../../shared/i18n'
-import { downloadAttachmentPart } from '../bodyFetch'
+import { downloadAttachmentPart, readStoredAttachment } from '../bodyFetch'
 import type { CalendarObjectRow, PimCollectionRow, PimSourceRow, Queries } from '../db/queries'
 import { syncLog } from '../log'
 import { DEFERRED, gateCalendars } from '../pim/gate'
@@ -68,8 +68,10 @@ const notApplicable = (): Error => new Error(t('invite.err.notApplicable'))
 
 async function attachmentText(s: RpcSession, msg: Message, att: Attachment, vault: boolean): Promise<string | null> {
   if ((att.size ?? 0) > MAX_INVITE_BYTES) return null
-  if (vault && !att.disk_path) {
-    const bytes = await s.deps.scheduler.enqueueInteractive(msg.accountId, async (client) => downloadAttachmentPart(msg, att, client))
+  if (vault) {
+    const bytes = att.disk_path && existsSync(att.disk_path)
+      ? readStoredAttachment(att.disk_path)
+      : await s.deps.scheduler.enqueueInteractive(msg.accountId, async (client) => downloadAttachmentPart(msg, att, client))
     return bytes.length > MAX_INVITE_BYTES ? null : bytes.toString('utf-8')
   }
   const path = await attachmentOnDisk(s.deps, msg, att)

@@ -1,7 +1,8 @@
 // RPC — Mail: liste, gövde, arama, işaretleme, taşıma, silme, abonelikler. Yetki kapısı (giriş / yönetici) RpcSession.handle'da; hesap düzeyi kontroller burada.
-import { existsSync, readFileSync } from 'fs'
+import { existsSync } from 'fs'
+import { SEALED_ATTACHMENT_SUFFIX } from '../../shared/attachmentFiles'
 import type { BodyResult, FolderKind, ListParams, SmartView } from '../../shared/rpc'
-import { BodyTooLargeError, fetchAttachmentPart, fetchBody, fetchRawHeaders, fetchRawSource, fetchSmimeRaw } from '../bodyFetch'
+import { BodyTooLargeError, fetchAttachmentPart, fetchBody, fetchRawHeaders, fetchRawSource, fetchSmimeRaw, openSealedAttachment, readStoredAttachment } from '../bodyFetch'
 import { invalidateFolderList, pollFolder as pollFolderOnce } from '../imapPoll'
 import { buildIncidents } from '../../shared/incident'
 import { buildHourlySeries } from '../../shared/volume'
@@ -19,6 +20,7 @@ import type { DecryptedBody } from '../smime/decryptCache'
 import { encodeChain } from '../smime/identity'
 import { decryptForUser, evaluatorFor, harvestContactCert, type StoredSmime } from '../smime/receive'
 import { getVaultStatus } from '../vault/manager'
+import { isVaultUnlocked } from '../vault/state'
 
 type MessageOf = NonNullable<ReturnType<Queries['getMessage']>>
 type AttachmentOf = NonNullable<ReturnType<Queries['getAttachment']>>
@@ -32,16 +34,22 @@ export function loadAttachment(q: Queries, messageId: number, attachmentId: numb
   return { msg, att }
 }
 
-/** Ekin diskteki yolu; önbellekte yoksa (ya da dosyası silinmişse) IMAP'ten çekilip yazılır. Yetki denetimi
- *  çağıranda. RPC getAttachment ve sunucunun HTTP ek ucu aynı yolu kullanır. */
+/** Kasa kilitliyken kasa hesabının eki verilmez */
+function assertAttachmentReadable(q: Queries, accountId: number): void {
+  if (q.getAccountRow(accountId)?.secure && !isVaultUnlocked()) throw new Error(t('sync.vault.locked'))
+}
+
+/** Ekin diskteki düz yolu; önbellekte yoksa (ya da dosyası silinmişse) IMAP'ten çekilip yazılır. Kasa hesabında önbellek
+ *  mühürlüdür, düz kopya kilitte silinir. Yetki denetimi çağıranda. RPC getAttachment ve sunucunun HTTP ek ucu aynı yolu kullanır. */
 export async function attachmentOnDisk(deps: RpcServerDeps, msg: MessageOf, att: AttachmentOf): Promise<string> {
   // ek o iletinin değilse (başka hesabın eki) ne verilir ne de o iletinin klasöründen çekilip önbelleğe yazılır:
   // görme yetkisi iletinin hesabında denetlenir, ek kimliği buna bağlı olmalı
   if (att.message_id !== msg.id) throw new Error(t('sync.mail.attachmentNotFound'))
-  if (att.disk_path && existsSync(att.disk_path)) return att.disk_path
-  return deps.scheduler.enqueueInteractive(msg.accountId, async (client, row) =>
-    fetchAttachmentPart(deps.q, row, msg, att, client, deps.attachDir)
-  )
+  assertAttachmentReadable(deps.q, msg.accountId)
+  const stored = att.disk_path && existsSync(att.disk_path)
+    ? att.disk_path
+    : await deps.scheduler.enqueueInteractive(msg.accountId, async (client, row) => fetchAttachmentPart(deps.q, row, msg, att, client, deps.attachDir))
+  return stored.endsWith(SEALED_ATTACHMENT_SUFFIX) ? openSealedAttachment(stored, deps.attachDir, att) : stored
 }
 
 const smimeState = (o: Partial<SmimeInfo>): SmimeInfo => ({ sig: 'none', enc: 'none', notes: [], signer: null, canSaveCert: false, ...o })
@@ -297,9 +305,10 @@ export const mailHandlers: Record<string, Handler> = {
     const owner = q.getMessage(att.message_id)
     if (!owner) throw new Error(t('sync.mail.attachmentNotFound'))
     s.assertCanView(owner.accountId)
+    assertAttachmentReadable(q, owner.accountId)
     if (!att.disk_path) throw new Error(t('sync.mail.attachmentNotOnDisk'))
     if ((att.size ?? 0) > INLINE_DATA_LIMIT) throw new Error(t('sync.mail.attachmentTooLargeInline'))
-    const buf = readFileSync(att.disk_path)
+    const buf = readStoredAttachment(att.disk_path)
     return { base64: buf.toString('base64'), mime: att.mime }
   },
 

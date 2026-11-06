@@ -344,17 +344,23 @@ export function messagesQueries(c: QCtx) {
       prep(`UPDATE messages SET has_attachments = ? WHERE id = ?`).run(has ? 1 : 0, messageId)
     },
 
-    // Kurallar motoru için watermark bazlı yeni-mail sorgusu — yalnız rules_eligible (gerçekten yeni
-    // gelen; ilk senkron/backfill/sıfırlama değil). Gelen Kutusu ve Sieve'in taşıdığı izlenen klasörler;
-    // kullanıcının kendi sunucu filtresiyle başka klasöre giden mail görülmez.
-    messagesSince(accountId: number, sinceId: number, limit: number, watchedFolderPaths: string[] = []): (MessageRow & { folderPath: string; folderKind: string })[] {
+    // Kurallar motorunun bekleyen yeni postası — yalnız rules_eligible (gerçekten yeni gelen; ilk
+    // senkron/backfill/sıfırlama değil). Gelen Kutusu ve Sieve'in taşıdığı izlenen klasörler; kullanıcının
+    // kendi sunucu filtresiyle başka klasöre giden mail görülmez. İşaret satırdadır: id yeniden kullanılır
+    // (AUTOINCREMENT yok), bu yüzden "son işlenen id" tutulmaz.
+    pendingRuleMessages(accountId: number, limit: number, watchedFolderPaths: string[] = []): (MessageRow & { folderPath: string; folderKind: string })[] {
       const watched = watchedFolderPaths.length ? ` OR f.path IN (${watchedFolderPaths.map(() => '?').join(',')})` : ''
       const rows = prep(
         `SELECT m.*, f.path AS folder_path FROM messages m JOIN folders f ON f.id = m.folder_id
-         WHERE m.account_id = ? AND (m.folder_kind = 'inbox'${watched}) AND m.id > ? AND m.hidden = 0 AND m.rules_eligible = 1
+         WHERE m.account_id = ? AND (m.folder_kind = 'inbox'${watched}) AND m.hidden = 0 AND m.rules_eligible = 1
          ORDER BY m.id ASC LIMIT ?`
-      ).all(accountId, ...watchedFolderPaths, sinceId, limit) as Record<string, unknown>[]
+      ).all(accountId, ...watchedFolderPaths, limit) as Record<string, unknown>[]
       return rows.map((r) => ({ ...rowToMessage(r), folderPath: r.folder_path as string, folderKind: r.folder_kind as string }))
+    },
+
+    /** Tur bitti: kuyrukta atlanan satırlar (gizli, izlenmeyen klasör) dahil bu noktaya kadar olanlar yeniden görülmez */
+    markRulesProcessed(accountId: number, upToId: number): void {
+      prep(`UPDATE messages SET rules_eligible = 0 WHERE account_id = ? AND rules_eligible = 1 AND id <= ?`).run(accountId, upToId)
     },
 
     newMailCountsSince(sinceTs: number, accountIds: number[] | null): { accountId: number; count: number }[] {

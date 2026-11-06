@@ -218,6 +218,9 @@ export interface SmimeCrlRow {
   last_error_at: number | null
 }
 
+/** Kuyruğa girerken satırı gizleyen işlemler: iptal ve kalıcı hata satırı geri gösterir */
+export const OPTIMISTIC_HIDE_OPS: ReadonlySet<string> = new Set(['trash', 'move', 'move_special', 'move_named'])
+
 export interface OpRow {
   id: number
   account_id: number

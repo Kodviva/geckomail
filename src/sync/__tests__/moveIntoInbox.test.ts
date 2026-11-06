@@ -32,6 +32,7 @@ describe('Gelen Kutusu\'na taşınan ileti yeni posta sayılmaz', () => {
   /** Sunucudaki Gelen Kutusu: uidNext'e kadar uid'ler var; ids: uid -> Message-ID (yoksa <m{uid}@t>) */
   const server = (uidNext: number, ids: Record<number, string> = {}): ImapFlow => ({
     mailbox: { uidValidity: 1n, uidNext, exists: uidNext - 1 },
+    status: async () => ({ uidNext }),
     getMailboxLock: async () => ({ release() {} }),
     search: async () => Array.from({ length: uidNext - 1 }, (_, i) => i + 1), // günlük tam karşılaştırma yerel satırları silmesin
     fetch: async function* (range: string) {
@@ -44,7 +45,7 @@ describe('Gelen Kutusu\'na taşınan ileti yeni posta sayılmaz', () => {
 
   const poll = (uidNext: number, ids?: Record<number, string>) =>
     pollFolder(q, q.getAccountRow(accountId)!, q.getFolderById(folderId)!, server(uidNext, ids), 1)
-  const eligible = (): number[] => q.messagesSince(accountId, 0, 100).map((r) => r.uid)
+  const eligible = (): number[] => q.pendingRuleMessages(accountId, 100).map((r) => r.uid)
   const MOVED = { 5: '<tasinan@t>' }
 
   it('taşınan ve gerçek posta aynı aralıkta: yalnız gerçek posta bildirilir ve kurallara girer (COPYUID)', async () => {

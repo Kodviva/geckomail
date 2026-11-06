@@ -12,7 +12,21 @@ const DEEP_FLAG_INTERVAL_MS = 6 * 3600_000
 const FOLDER_LIST_TTL_MS = 6 * 3600_000
 
 const SENT_NAMES = ['sent', 'inbox.sent', 'sent items', 'sent messages', 'inbox.sent items']
-const TRASH_NAMES = ['trash', 'inbox.trash', 'deleted items', 'inbox.deleted items', 'deleted messages']
+// SPECIAL-USE bildirmeyen sunucular için arayüz dillerindeki yerel adlar. Yanlış eşleşme klasördeki silmeyi kalıcı yapar:
+// yalnız kesin adlar (QQ'da 垃圾箱 Spam'dir, bu yüzden yok), yalnız kök ya da INBOX altı
+const TRASH_NAMES = [
+  'trash', 'deleted', 'deleted items', 'deleted messages', 'bin',
+  'çöp', 'çöp kutusu', 'silinenler', 'silinmiş öğeler',
+  'papierkorb', 'gelöscht', 'gelöschte elemente', 'gelöschte objekte',
+  'corbeille', 'éléments supprimés', 'messages supprimés',
+  'papelera', 'elementos eliminados', 'correo eliminado',
+  'lixeira', 'lixo', 'itens excluídos', 'itens eliminados',
+  'корзина', 'удаленные', 'удалённые', 'удаленные элементы', 'удалённые элементы',
+  'المحذوفات', 'سلة المهملات', 'العناصر المحذوفة',
+  'ट्रैश', 'हटाए गए आइटम',
+  'ゴミ箱', 'ごみ箱', '削除済み', '削除済みアイテム',
+  '已删除', '已删除邮件', '废纸篓', '回收站'
+]
 const JUNK_NAMES = ['junk', 'inbox.junk', 'spam', 'inbox.spam', 'junk e-mail']
 const ARCHIVE_NAMES = ['archive', 'inbox.archive', 'archives', 'inbox.archives']
 
@@ -37,7 +51,7 @@ function detectKind(path: string, specialUse: string | undefined): FolderKind {
   }
   const lower = path.toLowerCase()
   if (SENT_NAMES.includes(lower)) return 'sent'
-  if (TRASH_NAMES.includes(lower)) return 'trash'
+  if (TRASH_NAMES.includes(lower.normalize('NFC').replace(/^inbox[./]/, ''))) return 'trash'
   if (JUNK_NAMES.includes(lower)) return 'junk'
   if (ARCHIVE_NAMES.includes(lower)) return 'archive'
   return 'other'
@@ -160,7 +174,7 @@ async function fetchHeaderRange(
   arrived = false,
   // izlenen klasör: bu andan eski INTERNALDATE sunucu taşıması değildir (başka istemcinin dosyaladığı eski posta)
   watchedSince: number | null = null
-): Promise<{ count: number; newInbox: number; arrivals: number; lowUid: number | null }> {
+): Promise<{ count: number; newInbox: number; arrivals: number; lowUid: number | null; highUid: number | null }> {
   const rows: HeaderInput[] = []
   const movedUids = new Set<number>()
   const staleUids = new Set<number>()
@@ -177,6 +191,7 @@ async function fetchHeaderRange(
   let newCount = 0
   let eligible = 0
   let lowUid: number | null = null
+  let highUid: number | null = null
   q.tx(() => {
     for (const h of rows) {
       const { id, isNew } = q.upsertHeader(h)
@@ -186,9 +201,10 @@ async function fetchHeaderRange(
         q.ftsUpsert(id, h.subject, `${h.fromName ?? ''} ${h.fromAddr ?? ''}`, h.toJson, null)
       }
       if (lowUid === null || h.uid < lowUid) lowUid = h.uid
+      if (highUid === null || h.uid > highUid) highUid = h.uid
     }
   })
-  return { count: rows.length, newInbox: folder.kind === 'inbox' && arrived ? newCount : 0, arrivals: arrived ? eligible : 0, lowUid }
+  return { count: rows.length, newInbox: folder.kind === 'inbox' && arrived ? newCount : 0, arrivals: arrived ? eligible : 0, lowUid, highUid }
 }
 
 export async function pollFolder(
@@ -206,11 +222,15 @@ export async function pollFolder(
     const mb = client.mailbox
     if (!mb || typeof mb === 'boolean') return result
     const uv = Number(mb.uidValidity ?? 0)
-    const uidNext = mb.uidNext ?? 1
+    // Açık oturumda (IDLE) sunucu yalnız EXISTS yollar: imapflow uidNext ve highestModseq'i SELECT anındaki değerde bırakır,
+    // kilit de klasörü yeniden seçmez. STATUS sunucudan taze değeri alır
+    const live = await client.status(folder.path, { uidNext: true, highestModseq: true })
+    const uidNext = Math.max(mb.uidNext ?? 1, (live && live.uidNext) || 0)
     const exists = mb.exists ?? 0
+    const liveModseq = (live && live.highestModseq) || mb.highestModseq
     // Modseq Number'a sığar varsayılır (Dovecot pratikte küçük tutar); taşarsa CONDSTORE yolu deep-sync'e düşer
-    const modseq = mb.highestModseq ? Number(mb.highestModseq) : null
-    const supportsCondstore = !!mb.highestModseq
+    const modseq = liveModseq ? Number(liveModseq) : null
+    const supportsCondstore = !!liveModseq
 
     let f = { ...folder }
     if (f.uidvalidity !== null && f.uidvalidity !== uv) {
@@ -239,17 +259,23 @@ export async function pollFolder(
     }
 
     // 1) Yeni mailler
-    if (uidNext > (f.last_seen_uidnext ?? 1)) {
-      let from = f.last_seen_uidnext ?? 1
-      while (from < uidNext) {
-        const to = Math.min(from + NEW_MAIL_BATCH - 1, uidNext - 1)
-        const r = await fetchHeaderRange(q, client, folder, account, `${from}:${to === uidNext - 1 ? '*' : to}`, from, !watched || watchedSince !== null, watchedSince)
+    // STATUS seçili klasörde bayat dönebilir (RFC 9051 kullanılmamasını önerir): sayı arttıysa uidNext'e bakmadan `son:*` istenir
+    const lastUid = f.last_seen_uidnext ?? 1
+    const grew = f.last_seen_exists !== null && exists > f.last_seen_exists
+    if (uidNext > lastUid || grew) {
+      const top = Math.max(uidNext, lastUid + 1)
+      let from = lastUid
+      let highest = uidNext - 1
+      while (from < top) {
+        const to = Math.min(from + NEW_MAIL_BATCH - 1, top - 1)
+        const r = await fetchHeaderRange(q, client, folder, account, `${from}:${to === top - 1 ? '*' : to}`, from, !watched || watchedSince !== null, watchedSince)
         result.newInboxMessages += r.newInbox
         if (watched) result.watchedArrivals += r.arrivals
         if (r.count > 0) result.changed = true
+        if (r.highUid !== null && r.highUid > highest) highest = r.highUid
         from = to + 1
       }
-      q.updateFolderSync(f.id, { last_seen_uidnext: uidNext })
+      q.updateFolderSync(f.id, { last_seen_uidnext: Math.max(lastUid, highest + 1) })
     }
 
     // 2) Bayrak değişiklikleri

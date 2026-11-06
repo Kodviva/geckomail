@@ -136,7 +136,7 @@ describe('sunucu tarafı kurallarda istemci', () => {
     const id = add(target)
     await run()
     expect(ops()).toEqual(['call_webhook'])
-    expect(q.messagesSince(acc, 0, 10, ['Raporlar']).map((r) => r.id)).toEqual([id]) // gizlenmedi: taşınmadı
+    expect(q.isMessageHidden(id)).toBe(false) // gizlenmedi: taşınmadı
     await run()
     expect(ops()).toEqual(['call_webhook'])
   })
@@ -194,7 +194,7 @@ describe('sunucu tarafı kurallarda istemci', () => {
     movedArrivals.expect(acc, 'Raporlar', [{ uid: 40, messageId: '<m1@t>' }])
     rule([MOVE, WEBHOOK])
     await pollFolder(q, q.getAccountRow(acc)!, { ...f, uidvalidity: 1, last_seen_uidnext: 1, last_seen_exists: 0 }, server(2), 1)
-    expect(q.messagesSince(acc, 0, 100, ['Raporlar'])).toEqual([])
+    expect(q.pendingRuleMessages(acc, 100, ['Raporlar'])).toEqual([])
     expect(await run()).toEqual([])
   })
 
@@ -225,7 +225,7 @@ describe('sunucu tarafı kurallarda istemci', () => {
     expect(q.getMessage(ibx)?.seen).toBe(false)
     expect(seen[0].rows.map((r) => r.id)).toEqual([ibx, moved])
     expect(seen[0].reasons.get(moved)).toBe('rule-urgent')
-    expect(q.prefGet(`rules_watermark:${acc}`)).toBe(String(moved))
+    expect(q.pendingRuleMessages(acc, 10, ['Raporlar'])).toEqual([])
   })
 
   it('forward guard kept', async () => {
@@ -235,11 +235,11 @@ describe('sunucu tarafı kurallarda istemci', () => {
     expect(ops()).toEqual([])
   })
 
-  it('messagesSince klasör bilgisini taşır, izlenen liste yoksa yalnız inbox', () => {
+  it('pendingRuleMessages klasör bilgisini taşır, izlenen liste yoksa yalnız inbox', () => {
     add(inbox)
     add(target)
-    expect(q.messagesSince(acc, 0, 10).map((r) => r.folderPath)).toEqual(['INBOX'])
-    expect(q.messagesSince(acc, 0, 10, ['Raporlar']).map((r) => [r.folderPath, r.folderKind])).toEqual([['INBOX', 'inbox'], ['Raporlar', 'other']])
+    expect(q.pendingRuleMessages(acc, 10).map((r) => r.folderPath)).toEqual(['INBOX'])
+    expect(q.pendingRuleMessages(acc, 10, ['Raporlar']).map((r) => [r.folderPath, r.folderKind])).toEqual([['INBOX', 'inbox'], ['Raporlar', 'other']])
   })
 
   it('full batch continues after filtering', async () => {
@@ -249,8 +249,7 @@ describe('sunucu tarafı kurallarda istemci', () => {
     const ctx = { q, opq, hub: { broadcast: vi.fn() } as unknown as RpcHub, pipeline: { onNewMail } }
     await notifyNewMail(ctx, acc)
     // ilk tur 500 tarar, 3 satırı hatta verir; döngü sürer ve kalan 3 satır da işlenir
-    expect(Number(q.prefGet(`rules_watermark:${acc}`))).toBeGreaterThan(0)
-    expect(q.messagesSince(acc, Number(q.prefGet(`rules_watermark:${acc}`)), 10, ['Raporlar'])).toEqual([])
+    expect(q.pendingRuleMessages(acc, 10, ['Raporlar'])).toEqual([])
     expect(onNewMail).toHaveBeenCalledTimes(1)
   })
 
@@ -278,7 +277,7 @@ describe('sunucu tarafı kurallarda istemci', () => {
       const client = noList(serverByPath({ INBOX: 1, Raporlar: 3 }))
       const r = await pollAccount(q, q.getAccountRow(acc)!, client, 1)
       expect(r).toMatchObject({ newInboxMessages: 0, watchedArrivals: 2 })
-      expect(q.messagesSince(acc, 0, 10, ['Raporlar'])).toHaveLength(2)
+      expect(q.pendingRuleMessages(acc, 10, ['Raporlar'])).toHaveLength(2)
     })
 
     it('activation window: mail delivered before the first poll runs the client part', async () => {
@@ -287,7 +286,7 @@ describe('sunucu tarafı kurallarda istemci', () => {
       q.prefSet(`sieve_watch_since:${acc}`, JSON.stringify({ Raporlar: 1_700_000_000_003 }))
       const r = await pollAccount(q, q.getAccountRow(acc)!, noList(serverByPath({ INBOX: 1, Raporlar: 6 })), 1)
       expect(r.watchedArrivals).toBe(3)
-      expect(q.messagesSince(acc, 0, 10, ['Raporlar']).map((m) => m.uid)).toEqual([3, 4, 5])
+      expect(q.pendingRuleMessages(acc, 10, ['Raporlar']).map((m) => m.uid)).toEqual([3, 4, 5])
     })
 
     it('activation window: a folder never polled before', async () => {
@@ -305,7 +304,7 @@ describe('sunucu tarafı kurallarda istemci', () => {
       const r = await pollAccount(q, q.getAccountRow(acc)!, noList(serverByPath({ INBOX: 1, Raporlar: 3 })), 1)
       internal = (u) => 1_700_000_000_000 + u
       expect(r.watchedArrivals).toBe(0)
-      expect(q.messagesSince(acc, 0, 10, ['Raporlar'])).toEqual([])
+      expect(q.pendingRuleMessages(acc, 10, ['Raporlar'])).toEqual([])
     })
 
     it('a UIDVALIDITY reset does not refire rules', async () => {
@@ -313,7 +312,7 @@ describe('sunucu tarafı kurallarda istemci', () => {
       q.updateFolderSync(target, { uidvalidity: 9, last_seen_uidnext: 3, highest_modseq: null, last_seen_exists: 2 })
       const r = await pollAccount(q, q.getAccountRow(acc)!, noList(serverByPath({ INBOX: 1, Raporlar: 3 })), 1)
       expect(r.watchedArrivals).toBe(0)
-      expect(q.messagesSince(acc, 0, 10, ['Raporlar'])).toEqual([])
+      expect(q.pendingRuleMessages(acc, 10, ['Raporlar'])).toEqual([])
     })
 
     it('izlenmeyen klasör yoklanmaz', async () => {
@@ -344,7 +343,7 @@ describe('sunucu tarafı kurallarda istemci', () => {
       const client = noList(serverByPath({ INBOX: 1, Raporlar: 5 }))
       const r = await pollAccount(q, q.getAccountRow(acc)!, client, 1)
       expect(r.watchedArrivals).toBe(0)
-      expect(q.messagesSince(acc, 0, 10, ['Raporlar'])).toEqual([])
+      expect(q.pendingRuleMessages(acc, 10, ['Raporlar'])).toEqual([])
     })
 
     it('baseline no rules: daha önce eşitlenmiş klasörün birikmişi', async () => {
@@ -353,7 +352,7 @@ describe('sunucu tarafı kurallarda istemci', () => {
       q.prefSet(`sieve_watch_since:${acc}`, JSON.stringify({ Raporlar: 1_700_000_000_006 }))
       const first = await pollAccount(q, q.getAccountRow(acc)!, noList(serverByPath({ INBOX: 1, Raporlar: 6 })), 1)
       expect(first.watchedArrivals).toBe(0)
-      expect(q.messagesSince(acc, 0, 10, ['Raporlar'])).toEqual([])
+      expect(q.pendingRuleMessages(acc, 10, ['Raporlar'])).toEqual([])
       const next = await pollAccount(q, q.getAccountRow(acc)!, noList(serverByPath({ INBOX: 1, Raporlar: 7 })), 2)
       expect(next.watchedArrivals).toBe(1)
     })
@@ -388,6 +387,7 @@ describe('sunucu tarafı kurallarda istemci', () => {
         return { release() {} }
       },
       current: '',
+      status: async (path: string) => ({ uidNext: next[path] }),
       search: async () => Array.from({ length: next[client.current] - 1 }, (_, i) => i + 1),
       fetch: async function* (range: string) {
         const from = Number(range.split(':')[0])

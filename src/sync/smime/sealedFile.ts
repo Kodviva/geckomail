@@ -5,6 +5,13 @@ import { decrypt, encrypt } from '../vault/crypto'
 import { getVaultKey } from '../vault/state'
 import { SmimeLockedError } from './errors'
 
+/** Baştan mühürlü yazar: düz bayt diske hiç inmez */
+export function writeSealed(path: string, plain: Buffer): void {
+  const key = getVaultKey()
+  if (!key) throw new SmimeLockedError()
+  writeFileSync(path, encrypt(key, plain), { mode: 0o600 })
+}
+
 export function sealFile(path: string): void {
   const key = getVaultKey()
   if (!key) throw new SmimeLockedError()

@@ -3,6 +3,7 @@ import DOMPurify from 'dompurify'
 import { useStore } from '../store'
 import { rpc } from '../rpcClient'
 import { usePopover } from './usePopover'
+import { SEALED_ATTACHMENT_SUFFIX } from '../../../shared/attachmentFiles'
 import type { AttachmentInfo, MessageRow } from '../../../shared/rpc'
 import { fmtDate, fmtDateTime, fmtNumber, getUiOs, t } from '../../../shared/i18n'
 import { platform } from '../platform'
@@ -316,7 +317,8 @@ export default function MessageView() {
             if (/^image\/[\w.+-]+$/.test(mime)) map.set(a.contentId!, `data:${mime};base64,${base64}`)
             continue
           }
-          await rpc.call('getAttachment', { messageId: msg.id, attachmentId: a.id })
+          // mühürlü önbellek doğrudan okunur: düz kopya yalnız kullanıcı eki açınca oluşur
+          if (!a.diskPath?.endsWith(SEALED_ATTACHMENT_SUFFIX)) await rpc.call('getAttachment', { messageId: msg.id, attachmentId: a.id })
           const { base64, mime } = await rpc.call('getAttachmentData', { messageId: msg.id, attachmentId: a.id })
           map.set(a.contentId!, `data:${mime ?? 'image/png'};base64,${base64}`)
         } catch {

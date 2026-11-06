@@ -2,7 +2,7 @@
 import { decryptText, encryptText } from '../../vault/crypto'
 import { getVaultKey } from '../../vault/state'
 import { t } from '../../../shared/i18n'
-import { type OpRow } from './types'
+import { OPTIMISTIC_HIDE_OPS, type OpRow } from './types'
 import { OP_SEAL, type QCtx } from './ctx'
 
 export function storageQueries(c: QCtx) {
@@ -188,9 +188,13 @@ export function storageQueries(c: QCtx) {
       prep(`UPDATE op_queue SET state = 'pending' WHERE state = 'running' AND id IN (${ids.map(() => '?').join(',')})`).run(...ids)
     },
 
-    /** Açılışta: önceki süreç işlerken kapandıysa op kaybolmaz */
-    resetRunningOps(): number {
-      return prep(`UPDATE op_queue SET state = 'pending' WHERE state = 'running'`).run().changes
+    /** Açılışta: önceki süreç işlerken kapandıysa op kaybolmaz. Yarıda kalan gönderim alıcıya ulaşmış olabilir: otomatik
+     *  deneme çift mail üretir, karar kullanıcının (giden kutusunda başarısız görünür) */
+    resetRunningOps(sendUncertainError: string): number {
+      return c.q.tx(() => {
+        const sends = prep(`UPDATE op_queue SET state = 'failed', last_error = ? WHERE state = 'running' AND kind = 'smtp_send'`).run(sendUncertainError).changes
+        return sends + prep(`UPDATE op_queue SET state = 'pending' WHERE state = 'running'`).run().changes
+      })
     },
 
     opDone(id: number): void {
@@ -254,8 +258,24 @@ export function storageQueries(c: QCtx) {
       ).run(accountId, accountId, folderPath, ...uids)
     },
 
-    pruneFailedOps(before: number): number {
-      return prep(`DELETE FROM op_queue WHERE state = 'failed' AND created_at < ?`).run(before).changes
+    /** Eski başarısız satırları siler; ek yolları döner (çağıran dosyaları siler). Kilitliyken mühürlü satır kalır: yolu okunamaz */
+    pruneFailedOps(before: number): { removed: number; outboxFiles: string[] } {
+      return c.q.tx(() => {
+        const rows = c.openOps(prep(`SELECT id, account_id, kind, payload_json, attempts FROM op_queue WHERE state = 'failed' AND created_at < ?`).all(before) as OpRow[])
+        const outboxFiles: string[] = []
+        for (const r of rows) {
+          try {
+            const p = JSON.parse(r.payload_json) as { attachments?: { path: string }[]; folderPath?: string; uids?: number[] }
+            if (r.kind === 'smtp_send') for (const a of p.attachments ?? []) outboxFiles.push(a.path)
+            // önceki sürümde başarısız olmuş taşımanın gizlediği satır
+            if (OPTIMISTIC_HIDE_OPS.has(r.kind) && p.folderPath && p.uids) c.q.unhideByFolderUids(r.account_id, p.folderPath, p.uids)
+          } catch {
+            /* bozuk payload */
+          }
+          prep(`DELETE FROM op_queue WHERE id = ?`).run(r.id)
+        }
+        return { removed: rows.length, outboxFiles }
+      })
     },
 
     opFailed(id: number, error: string): void {

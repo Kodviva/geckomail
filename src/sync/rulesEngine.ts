@@ -3,7 +3,7 @@ import type { RuleRow } from './db/queries'
 import { t } from '../shared/i18n'
 
 // Saf değerlendirme — IO yok, DB yok, ağ yok. imapPoll.ts/scheduler.ts'e sıfır dokunuş:
-// kurallar sadece watermark bazlı yeniden-sorguyla çalışır (bkz. rulesRunner.ts).
+// kurallar sadece bekleyen satır işaretiyle (rules_eligible) çalışır (bkz. rulesRunner.ts).
 export interface RuleMatchInput {
   fromAddr: string | null
   subject: string | null

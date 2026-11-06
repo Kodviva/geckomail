@@ -6,6 +6,7 @@ import type { DraftOut, OutboxItem, SmimeRequest } from '../../shared/rpc'
 import { SMIME_MAX_BCC } from '../../shared/smime'
 import { addressesOf } from '../smime/build'
 import { loadSignKey, ownEncryptCert, resolveRecipients } from '../smime/identity'
+import { OPTIMISTIC_HIDE_OPS } from '../db/q/types'
 import { sealFile } from '../smime/sealedFile'
 import { newMessageId } from '../smtpSend'
 import { getVaultStatus } from '../vault/manager'
@@ -321,8 +322,8 @@ export const composeHandlers: Record<string, Handler> = {
     }
     q.opDone(id)
     if (op.kind === 'smtp_send') for (const a of p.attachments ?? []) rmSync(a.path, { force: true })
-    // bekleyen taşıma/silme iptal: iyimser gizlenen mesajlar geri görünsün
-    if (op.state === 'pending' && ['trash', 'move', 'move_special', 'move_named'].includes(op.kind) && p.folderPath && p.uids) {
+    // taşıma/silme iptal (bekleyen ya da başarısız): iyimser gizlenen mesajlar geri görünsün
+    if (OPTIMISTIC_HIDE_OPS.has(op.kind) && p.folderPath && p.uids) {
       q.unhideByFolderUids(op.account_id, p.folderPath, p.uids)
       s.broadcast('messages:changed', { accountId: op.account_id })
     }

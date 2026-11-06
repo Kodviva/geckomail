@@ -1,6 +1,6 @@
 // Motor çekirdeği: DB + IMAP zamanlayıcı + kurallar + bildirim + RPC sunucusu.
 // Electron'dan bağımsız; dış dünya yalnızca EngineHost üzerinden (şifreleme, bildirim, rozet, ölümcül hata).
-import { fetchBody, fetchNotifyBodyText } from './bodyFetch'
+import { clearVaultOpen, fetchBody, fetchNotifyBodyText } from './bodyFetch'
 import { isLocale, setLocale, t, tFor } from '../shared/i18n'
 import { encryptAccountPassword } from './vault/manager'
 import { initOAuth, oauthClientsFrom, TokenCache } from './oauth'
@@ -59,6 +59,7 @@ export function startEngine(opts: EngineOptions): Engine {
     if (isLocale(saved)) setLocale(saved)
   }
   const attachDir = join(userData, 'attachments')
+  clearVaultOpen(attachDir) // önceki süreç kilitlemeden kapandıysa açılan ek kopyaları kalmasın
 
   // ---- ev sahibiyle şifreleme köprüsü (masaüstünde safeStorage yalnızca main'de) ----
   const encrypt = (values: string[]): Promise<Uint8Array[]> => host.encrypt(values)
@@ -145,6 +146,7 @@ export function startEngine(opts: EngineOptions): Engine {
     },
     emitChanged() {
       server?.broadcastDebounced('messages:changed', { accountId: null })
+      server?.broadcastDebounced('counts:changed', {}) // başarısız taşıma satırı geri gösterir
     },
     emitAutomationLogged() {
       server?.broadcastDebounced('automation:logged', {})
@@ -353,7 +355,7 @@ export function startEngine(opts: EngineOptions): Engine {
       try {
         evictCaches(db, q)
         q.pruneObservability(Date.now() - 30 * 86_400_000)
-        q.pruneFailedOps(Date.now() - 30 * 86_400_000) // başarısız op'lar (ör. 33 MB'lık append_sent) sınırsız birikmesin
+        opq.pruneFailedOps(Date.now() - 30 * 86_400_000) // başarısız op'lar (ör. 33 MB'lık append_sent) sınırsız birikmesin
         trimRuleLog(db)
         checkAnomalies(q, (ev) => {
           server?.broadcast('account:anomaly', ev)
@@ -441,8 +443,8 @@ export function startEngine(opts: EngineOptions): Engine {
     }
       if (credRetry) clearTimeout(credRetry)
       sieve.stop()
+      await opq.stop() // bağlantı ve DB açıkken: gönderilmekte olan ileti yarım kalmasın
       scheduler.stop()
-      opq.stop()
       db.close()
     }
   }

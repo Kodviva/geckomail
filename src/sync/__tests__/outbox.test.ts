@@ -32,7 +32,7 @@ describe('giden kutusu sorguları (R12)', () => {
     q.opResetForRetry(b)
     expect(q.getOp(b)?.state).toBe('pending')
     q.opFailed(b, 'yine')
-    expect(q.pruneFailedOps(Date.now() + 1000)).toBe(1)
+    expect(q.pruneFailedOps(Date.now() + 1000).removed).toBe(1)
     expect(q.listOps(null).map((o) => o.id)).toEqual([a])
   })
 

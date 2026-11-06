@@ -96,7 +96,7 @@ describe('bildirim hattı', () => {
       toJson: null, date: 1_700_000_000_000 + uid, size: 10, seen: false, flagged: false, answered: false, hasAttachments: false,
       listUnsubscribe: null, listUnsubscribePost: null, rulesEligible: true, ...over
     })
-    return q.messagesSince(accountId, 0, 500).at(-1)!
+    return q.pendingRuleMessages(accountId, 500).at(-1)!
   }
   const mails = (accountId: number, n: number): MessageRow[] => Array.from({ length: n }, (_, i) => mail(accountId, `x${i}@y.co`, `konu ${i}`))
   const rule = (userId: number, groups: NotifyRule['groups'], level: NotifyRule['level']): NotifyRule =>
