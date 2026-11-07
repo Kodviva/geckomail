@@ -36,7 +36,8 @@ describe('çeviri kataloğu', () => {
     for (const l of LOCALES) {
       const cat = CATALOGS[l.id]
       if (!cat) continue // henüz çevrilmemiş dil: İngilizceye düşer
-      const missing = [...trBases].filter((k) => !Object.keys(cat).some((x) => base(x) === k))
+      const catBases = new Set(Object.keys(cat).map(base)) // iç içe arama binlerce anahtarda CI'da 5 sn'yi aşıyordu
+      const missing = [...trBases].filter((k) => !catBases.has(k))
       const extra = Object.keys(cat).filter((k) => !trBases.has(base(k)))
       expect({ lang: l.id, missing: missing.slice(0, 20) }).toEqual({ lang: l.id, missing: [] })
       expect({ lang: l.id, extra: extra.slice(0, 20) }).toEqual({ lang: l.id, extra: [] })
